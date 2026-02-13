@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLM Coding Plan 用量仪表盘</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #475569;
+            --accent-color: #60a5fa;
+            --accent-hover: #3b82f6;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .progress-bar {
+            background-color: var(--bg-tertiary);
+            border-radius: 9999px;
+            overflow: hidden;
+            height: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.5s ease;
+        }
+
+        .input-field {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            width: 100%;
+            transition: all 0.2s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--border-color);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-lite { background-color: #dbeafe; color: #1d4ed8; }
+        .badge-pro { background-color: #dcfce7; color: #15803d; }
+        .badge-max { background-color: #fef3c7; color: #b45309; }
+        [data-theme="dark"] .badge-lite { background-color: #1e3a5f; color: #93c5fd; }
+        [data-theme="dark"] .badge-pro { background-color: #14532d; color: #86efac; }
+        [data-theme="dark"] .badge-max { background-color: #78350f; color: #fcd34d; }
+
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .status-success { background-color: var(--success-color); }
+        .status-warning { background-color: var(--warning-color); }
+        .status-danger { background-color: var(--danger-color); }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-3">
+                    <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    GLM Coding Plan 仪表盘
+                </h1>
+                <p class="text-sm mt-1" style="color: var(--text-secondary)">实时监控您的 API 用量和额度</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="lastUpdate" class="text-sm" style="color: var(--text-secondary)"></span>
+                <button id="refreshBtn" class="btn btn-secondary flex items-center gap-2" onclick="refreshData()">
+                    <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    刷新
+                </button>
+                <button class="btn btn-secondary p-2" onclick="toggleTheme()" data-tooltip="切换主题">
+                    <svg id="themeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                    </svg>
+                </button>
+                <button class="btn btn-secondary p-2" onclick="toggleSettings()" data-tooltip="设置">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- API Key Input Section -->
+        <section id="apiKeySection" class="card mb-6 fade-in">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                </svg>
+                API Key 管理
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                        输入 GLM API Key（支持多个 Key，每行一个）
+                    </label>
+                    <textarea id="apiKeyInput" class="input-field h-24 font-mono text-sm" placeholder="请输入您的 GLM API Key...&#10;格式: xxxxxxxx.xxxxxxxxxxxx&#10;支持同时查询多个账户"></textarea>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button id="saveKeyBtn" class="btn" onclick="saveApiKeys()">保存并查询</button>
+                    <button class="btn btn-secondary" onclick="clearApiKeys()">清除所有</button>
+                    <span id="keyStatus" class="text-sm" style="color: var(--text-secondary)"></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Panel (Hidden by default) -->
+        <section id="settingsPanel" class="card mb-6 hidden">
+            <h2 class="text-lg font-semibold mb-4">设置</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                        自动刷新间隔
+                    </label>
+                    <select id="refreshInterval" class="input-field" onchange="updateRefreshInterval()">
+                        <option value="0">禁用</option>
+                        <option value="30000">30 秒</option>
+                        <option value="60000" selected>1 分钟</option>
+                        <option value="300000">5 分钟</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                        CORS 代理
+                    </label>
+                    <select id="corsProxy" class="input-field" onchange="saveSettings()">
+                        <option value="corsproxy">corsproxy.io（文件直开可试）</option>
+                        <option value="allorigins">allorigins.win</option>
+                        <option value="none">不使用代理（Live Server 推荐）</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="saveHistory" class="w-4 h-4 rounded" checked onchange="saveSettings()">
+                        <span class="text-sm">保存历史记录以显示趋势图</span>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <!-- Error Message -->
+        <div id="errorAlert" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+            <div class="flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span id="errorMessage"></span>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboardContent" class="hidden">
+            <!-- Account Selector (for multiple keys) -->
+            <div id="accountSelector" class="card mb-6 hidden">
+                <div class="flex items-center gap-4 flex-wrap">
+                    <span class="text-sm font-medium" style="color: var(--text-secondary)">选择账户:</span>
+                    <div id="accountTabs" class="flex gap-2 flex-wrap"></div>
+                    <button class="btn btn-secondary py-1 px-3 text-xs" onclick="resetCurrentAccountTracking()">
+                        重置当前账户追踪
+                    </button>
+                </div>
+                <div id="accountTrackingHint" class="text-xs mt-2" style="color: var(--text-secondary)"></div>
+            </div>
+
+            <!-- Main Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <!-- Plan Type Card -->
+                <div class="card fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium" style="color: var(--text-secondary)">当前套餐</span>
+                        <svg class="w-5 h-5" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="planBadge" class="badge badge-pro">Pro</span>
+                        <span id="planExpiry" class="text-sm" style="color: var(--text-secondary)"></span>
+                    </div>
+                </div>
+
+                <!-- 5-Hour Cycle Card -->
+                <div class="card fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium" style="color: var(--text-secondary)">5小时周期</span>
+                        <svg class="w-5 h-5" style="color: var(--success-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="mb-2">
+                        <span id="cycleUsed" class="text-2xl font-bold">0</span>
+                        <span class="text-sm" style="color: var(--text-secondary)"> / <span id="cycleTotal">0</span></span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="cycleProgress" class="progress-fill" style="background-color: var(--success-color); width: 0%"></div>
+                    </div>
+                    <div class="mt-2 text-xs" style="color: var(--text-secondary)">
+                        周期重置: <span id="cycleReset">--</span>
+                    </div>
+                </div>
+
+                <!-- Weekly Quota Card -->
+                <div class="card fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium" style="color: var(--text-secondary)">每周额度</span>
+                        <svg class="w-5 h-5" style="color: var(--warning-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="mb-2">
+                        <span id="weeklyPercent" class="text-2xl font-bold">0%</span>
+                        <span class="text-sm" style="color: var(--text-secondary)"> 已使用</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="weeklyProgress" class="progress-fill" style="background-color: var(--warning-color); width: 0%"></div>
+                    </div>
+                    <div class="mt-2 text-xs" style="color: var(--text-secondary)">
+                        重置时间: <span id="weeklyReset">--</span>
+                    </div>
+                </div>
+
+                <!-- Account Status Card -->
+                <div class="card fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium" style="color: var(--text-secondary)">账户状态</span>
+                        <svg class="w-5 h-5" style="color: var(--success-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex items-center">
+                            <span id="statusDot" class="status-dot status-success"></span>
+                            <span id="statusText" class="text-sm">正常</span>
+                        </div>
+                        <div class="text-xs" style="color: var(--text-secondary)">
+                            24h Token 用量: <span id="accountBalance" class="font-medium">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model Balances & MCP Tools -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- Model Balances -->
+                <div class="card fade-in">
+                    <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                        </svg>
+                        模型用量概览
+                    </h3>
+                    <div id="modelBalances" class="space-y-4">
+                        <div class="text-center py-8" style="color: var(--text-secondary)">
+                            加载中...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP Tools -->
+                <div class="card fade-in">
+                    <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        MCP 工具额度
+                    </h3>
+                    <div id="mcpTools" class="space-y-4">
+                        <div class="text-center py-8" style="color: var(--text-secondary)">
+                            加载中...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Usage Trend Chart -->
+            <div class="card fade-in mb-6">
+                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    用量趋势（最近 24 小时）
+                </h3>
+                <div class="relative h-64">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Detailed Usage Table -->
+            <div class="card fade-in">
+                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    详细用量信息
+                </h3>
+                <div id="detailedUsage" class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border-color)">
+                                <th class="text-left py-3 px-4 font-medium" style="color: var(--text-secondary)">项目</th>
+                                <th class="text-right py-3 px-4 font-medium" style="color: var(--text-secondary)">已用</th>
+                                <th class="text-right py-3 px-4 font-medium" style="color: var(--text-secondary)">总量</th>
+                                <th class="text-right py-3 px-4 font-medium" style="color: var(--text-secondary)">剩余</th>
+                                <th class="text-left py-3 px-4 font-medium" style="color: var(--text-secondary)">状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usageTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center py-8" style="color: var(--text-secondary)">
+                                    加载中...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="hidden text-center py-12">
+            <svg class="w-12 h-12 mx-auto mb-4 loading-spinner" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <p style="color: var(--text-secondary)">正在获取用量数据...</p>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-8 text-center text-sm" style="color: var(--text-secondary)">
+            <p>数据来源: GLM OpenAPI | 本仪表盘不存储您的 API Key 到远程服务器</p>
+            <p class="mt-1">建议使用 VS Code Live Server 以获得最佳体验</p>
+        </footer>
+    </div>
+
+    <script>
+        // ==================== Configuration ====================
+        const CONFIG = {
+            baseUrls: [
+                'https://open.bigmodel.cn',
+                'https://api.z.ai'
+            ],
+            apiEndpoints: {
+                modelUsage: '/api/monitor/usage/model-usage',
+                toolUsage: '/api/monitor/usage/tool-usage',
+                quotaLimit: '/api/monitor/usage/quota/limit'
+            },
+            corsProxies: {
+                corsproxy: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                allorigins: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                none: (url) => url
+            },
+            planLimits: {
+                lite: { cycleMax: 100, weeklyMax: 2000 },
+                pro: { cycleMax: 400, weeklyMax: 10000 },
+                max: { cycleMax: 1000, weeklyMax: 50000 }
+            },
+            models: [
+                { id: 'glm-4-plus', name: 'GLM-4-Plus', color: '#3b82f6' },
+                { id: 'glm-4-0520', name: 'GLM-4-0520', color: '#8b5cf6' },
+                { id: 'glm-4-air', name: 'GLM-4-Air', color: '#06b6d4' },
+                { id: 'glm-4-airx', name: 'GLM-4-AirX', color: '#10b981' },
+                { id: 'glm-4-flash', name: 'GLM-4-Flash', color: '#f59e0b' },
+                { id: 'glm-4v', name: 'GLM-4V', color: '#ef4444' }
+            ],
+            mcpTools: [
+                { id: 'web_search', name: '联网搜索', icon: '🔍' },
+                { id: 'web_reader', name: '网页读取', icon: '📄' },
+                { id: 'vision', name: '视觉理解', icon: '👁️' }
+            ]
+        };
+
+        // ==================== State Management ====================
+        let state = {
+            apiKeys: [],
+            currentKeyIndex: 0,
+            data: {},
+            accountData: {},
+            keyTracking: {},
+            refreshTimer: null,
+            chart: null,
+            requestId: 0
+        };
+
+        // ==================== Initialization ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            initChart();
+            initTheme();
+            updateRefreshInterval(false);
+            loadApiKeys();
+        });
+
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem('glm_settings') || '{}');
+            const defaultProxy = window.location.protocol === 'file:' ? 'corsproxy' : 'none';
+            document.getElementById('refreshInterval').value = settings.refreshInterval || '60000';
+            document.getElementById('corsProxy').value = settings.corsProxy || defaultProxy;
+            document.getElementById('saveHistory').checked = settings.saveHistory !== false;
+        }
+
+        function saveSettings() {
+            const settings = {
+                refreshInterval: document.getElementById('refreshInterval').value,
+                corsProxy: document.getElementById('corsProxy').value,
+                saveHistory: document.getElementById('saveHistory').checked
+            };
+            localStorage.setItem('glm_settings', JSON.stringify(settings));
+        }
+
+        function loadKeyTracking() {
+            const raw = JSON.parse(localStorage.getItem('glm_key_tracking') || '{}');
+            state.keyTracking = raw && typeof raw === 'object' ? raw : {};
+            pruneKeyTracking();
+        }
+
+        function saveKeyTracking() {
+            localStorage.setItem('glm_key_tracking', JSON.stringify(state.keyTracking));
+        }
+
+        function pruneKeyTracking() {
+            const keySet = new Set(state.apiKeys);
+            const next = {};
+            Object.entries(state.keyTracking).forEach(([key, value]) => {
+                if (keySet.has(key)) {
+                    next[key] = value;
+                }
+            });
+            state.keyTracking = next;
+        }
+
+        function loadApiKeys() {
+            const keys = JSON.parse(localStorage.getItem('glm_api_keys') || '[]');
+            state.apiKeys = keys;
+            loadKeyTracking();
+
+            if (keys.length > 0) {
+                document.getElementById('apiKeyInput').value = keys.join('\n');
+                updateKeyStatus(`${keys.length} 个 API Key 已保存`);
+                refreshData();
+            }
+        }
+
+        function saveApiKeys() {
+            const input = document.getElementById('apiKeyInput').value;
+            const keys = input.split('\n')
+                .map(k => k.trim())
+                .filter(k => k.length > 0);
+
+            // Validate keys - GLM format: xxxxxxxx.xxxxxxxxxxxx (hex string dot alphanumeric)
+            const validKeys = keys.filter(k => {
+                // Accept keys that are at least 20 characters and contain alphanumeric/dot/dash/underscore
+                return k.length >= 20 && /^[a-zA-Z0-9._-]+$/.test(k);
+            });
+
+            if (validKeys.length === 0) {
+                showError('请输入有效的 API Key');
+                return;
+            }
+
+            const invalidCount = keys.length - validKeys.length;
+            if (invalidCount > 0) {
+                console.warn(`${invalidCount} 个无效的 Key 已被忽略`);
+            }
+
+            state.apiKeys = validKeys;
+            state.currentKeyIndex = 0;
+            state.accountData = {};
+            state.requestId = 0;
+            pruneKeyTracking();
+            saveKeyTracking();
+            localStorage.setItem('glm_api_keys', JSON.stringify(validKeys));
+            updateKeyStatus(`已保存 ${validKeys.length} 个 API Key`);
+            hideError();
+
+            refreshData();
+        }
+
+        function clearApiKeys() {
+            if (confirm('确定要清除所有已保存的 API Key 吗？')) {
+                state.apiKeys = [];
+                state.currentKeyIndex = 0;
+                state.accountData = {};
+                state.keyTracking = {};
+                state.requestId = 0;
+                localStorage.removeItem('glm_api_keys');
+                localStorage.removeItem('glm_key_tracking');
+                document.getElementById('apiKeyInput').value = '';
+                document.getElementById('dashboardContent').classList.add('hidden');
+                updateKeyStatus('已清除所有 API Key');
+            }
+        }
+
+        function updateKeyStatus(message) {
+            document.getElementById('keyStatus').textContent = message;
+        }
+
+        function maskApiKey(key) {
+            const normalized = String(key || '').trim();
+            if (!normalized) return '未知';
+            if (normalized.length <= 10) return normalized;
+            return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`;
+        }
+
+        function buildTrackingSnapshot(data) {
+            return {
+                tokens: Number(data?.modelSummary?.totalTokens24h || 0),
+                calls: Number(data?.modelSummary?.totalCalls24h || 0),
+                mcp: Number(data?.mcpUsage?.shared?.used || 0),
+                cycle: Number(data?.plan?.cycleUsed || 0),
+                weekly: Number(data?.weekly?.used || 0),
+                ts: Date.now()
+            };
+        }
+
+        function buildTrackingDelta(baseline, current) {
+            const diff = (a, b) => {
+                const x = Number(a || 0);
+                const y = Number(b || 0);
+                return x >= y ? (x - y) : 0;
+            };
+            return {
+                tokens: diff(current.tokens, baseline.tokens),
+                calls: diff(current.calls, baseline.calls),
+                mcp: diff(current.mcp, baseline.mcp),
+                cycle: diff(current.cycle, baseline.cycle),
+                weekly: diff(current.weekly, baseline.weekly)
+            };
+        }
+
+        function upsertKeyTracking(apiKey, data) {
+            if (!apiKey || !data) return;
+            const snapshot = buildTrackingSnapshot(data);
+            const existing = state.keyTracking[apiKey];
+            if (!existing || !existing.baseline) {
+                state.keyTracking[apiKey] = {
+                    baseline: snapshot,
+                    latest: snapshot,
+                    delta: { tokens: 0, calls: 0, mcp: 0, cycle: 0, weekly: 0 },
+                    updatedAt: Date.now()
+                };
+            } else {
+                const baseline = existing.baseline;
+                const delta = buildTrackingDelta(baseline, snapshot);
+                state.keyTracking[apiKey] = {
+                    baseline,
+                    latest: snapshot,
+                    delta,
+                    updatedAt: Date.now()
+                };
+            }
+            saveKeyTracking();
+        }
+
+        function getKeyTracking(apiKey) {
+            if (!apiKey) return null;
+            return state.keyTracking[apiKey] || null;
+        }
+
+        // ==================== API Calls ====================
+        function getCorsProxyUrl(url) {
+            const proxyType = document.getElementById('corsProxy').value;
+            return CONFIG.corsProxies[proxyType](url);
+        }
+
+        function formatApiDateTime(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+
+        function getLast24HourWindow() {
+            const now = new Date();
+            const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, now.getHours(), 0, 0, 0);
+            const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 59, 59, 999);
+            return {
+                startTime: formatApiDateTime(startDate),
+                endTime: formatApiDateTime(endDate)
+            };
+        }
+
+        function buildUrlWithQuery(baseUrl, endpoint, query = null) {
+            const url = `${baseUrl}${endpoint}`;
+            if (!query || Object.keys(query).length === 0) {
+                return url;
+            }
+            const params = new URLSearchParams();
+            Object.entries(query).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                    params.set(key, value);
+                }
+            });
+            const queryString = params.toString();
+            return queryString ? `${url}?${queryString}` : url;
+        }
+
+        function parseJsonResponse(text) {
+            if (!text) return {};
+            try {
+                return JSON.parse(text);
+            } catch {
+                throw new Error('接口返回了非 JSON 数据');
+            }
+        }
+
+        function normalizeApiData(payload) {
+            if (!payload || typeof payload !== 'object') return {};
+            return payload.data || payload.result || payload;
+        }
+
+        function toTimestamp(value) {
+            if (value === null || value === undefined || value === '') return null;
+            const numeric = Number(value);
+            if (Number.isFinite(numeric) && numeric > 100000000000) {
+                return numeric;
+            }
+            const parsed = new Date(value);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+        }
+
+        function clampPercent(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return 0;
+            return Math.max(0, Math.min(100, num));
+        }
+
+        async function requestOnce(url, authHeader) {
+            const proxyUrl = getCorsProxyUrl(url);
+            const response = await fetch(proxyUrl, {
+                method: 'GET',
+                cache: 'no-store',
+                headers: {
+                    'Authorization': authHeader,
+                    'Accept-Language': 'en-US,en',
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const responseText = await response.text();
+            if (!response.ok) {
+                let detail = '';
+                try {
+                    const errorJson = JSON.parse(responseText);
+                    detail = errorJson.msg || errorJson.message || errorJson.error || '';
+                } catch {
+                    detail = responseText.replace(/\s+/g, ' ').trim().slice(0, 150);
+                }
+                throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+            }
+
+            const json = parseJsonResponse(responseText);
+            const code = Number(json.code);
+            if ((json.success === false) || (Number.isFinite(code) && code !== 200)) {
+                throw new Error(`API ${json.code || 'ERR'}: ${json.msg || '请求失败'}`);
+            }
+
+            return json;
+        }
+
+        async function fetchWithAuth(url, apiKey) {
+            const normalized = apiKey.trim();
+            const authCandidates = normalized.startsWith('Bearer ')
+                ? [normalized]
+                : [normalized, `Bearer ${normalized}`];
+
+            let lastError = null;
+            for (const authHeader of authCandidates) {
+                try {
+                    return await requestOnce(url, authHeader);
+                } catch (error) {
+                    lastError = error;
+                    if (!/HTTP 401|HTTP 403/.test(error.message)) {
+                        throw error;
+                    }
+                }
+            }
+
+            throw lastError || new Error('请求失败');
+        }
+
+        async function fetchAllData(apiKey) {
+            showLoading(true);
+            hideError();
+
+            const queryWindow = getLast24HourWindow();
+            const requestNonce = Date.now();
+            let lastError = null;
+
+            for (const baseUrl of CONFIG.baseUrls) {
+                try {
+                    const modelUsageUrl = buildUrlWithQuery(baseUrl, CONFIG.apiEndpoints.modelUsage, {
+                        ...queryWindow,
+                        _ts: requestNonce
+                    });
+                    const toolUsageUrl = buildUrlWithQuery(baseUrl, CONFIG.apiEndpoints.toolUsage, {
+                        ...queryWindow,
+                        _ts: requestNonce
+                    });
+                    const quotaLimitUrl = buildUrlWithQuery(baseUrl, CONFIG.apiEndpoints.quotaLimit, {
+                        _ts: requestNonce
+                    });
+
+                    const [modelUsage, toolUsage, quotaLimit] = await Promise.all([
+                        fetchWithAuth(modelUsageUrl, apiKey),
+                        fetchWithAuth(toolUsageUrl, apiKey),
+                        fetchWithAuth(quotaLimitUrl, apiKey)
+                    ]);
+
+                    return {
+                        baseUrl,
+                        queryWindow,
+                        modelUsage,
+                        toolUsage,
+                        quotaLimit
+                    };
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`Failed on ${baseUrl}:`, error.message);
+                }
+            }
+
+            throw lastError || new Error('所有可用 API 域名均请求失败');
+        }
+
+        async function refreshData() {
+            if (state.apiKeys.length === 0) {
+                showError('请先输入 API Key');
+                return;
+            }
+
+            const targetIndex = state.currentKeyIndex;
+            const apiKey = state.apiKeys[targetIndex];
+            const activeRequestId = ++state.requestId;
+
+            const btn = document.getElementById('refreshBtn');
+            const icon = document.getElementById('refreshIcon');
+            btn.disabled = true;
+            icon.classList.add('loading-spinner');
+            updateKeyStatus(`正在查询账户 ${targetIndex + 1}（${maskApiKey(apiKey)}）...`);
+
+            try {
+                const data = await fetchAllData(apiKey);
+                if (activeRequestId !== state.requestId || targetIndex !== state.currentKeyIndex) {
+                    return;
+                }
+
+                const parsedData = parseApiData(data);
+                parsedData.account = {
+                    index: targetIndex,
+                    keyMask: maskApiKey(apiKey)
+                };
+                state.data = parsedData;
+                state.accountData[targetIndex] = parsedData;
+                upsertKeyTracking(apiKey, parsedData);
+                updateUI();
+                saveHistoryData(state.data);
+
+                document.getElementById('dashboardContent').classList.remove('hidden');
+                hideError();
+                updateKeyStatus(`当前查看: 账户 ${targetIndex + 1}（${maskApiKey(apiKey)}）`);
+            } catch (error) {
+                if (activeRequestId !== state.requestId) {
+                    return;
+                }
+                console.error('Fetch error:', error);
+                const hint = /HTTP 403|Failed to fetch|NetworkError/i.test(error.message)
+                    ? '。可尝试在“设置”中切换 CORS 代理，或用 Live Server 并选择“不使用代理”。'
+                    : '';
+                showError(`获取数据失败: ${error.message}${hint}`);
+            } finally {
+                if (activeRequestId === state.requestId) {
+                    btn.disabled = false;
+                    icon.classList.remove('loading-spinner');
+                    showLoading(false);
+                    updateLastRefresh();
+                }
+            }
+        }
+
+        function parseApiData(rawData) {
+            const modelUsage = normalizeApiData(rawData.modelUsage);
+            const toolUsage = normalizeApiData(rawData.toolUsage);
+            const quotaLimit = normalizeApiData(rawData.quotaLimit);
+
+            const planLevel = String(quotaLimit.level || 'pro').toLowerCase();
+            const planType = CONFIG.planLimits[planLevel] ? planLevel : 'pro';
+            const planLimits = CONFIG.planLimits[planType] || CONFIG.planLimits.pro;
+            const limitItems = Array.isArray(quotaLimit.limits) ? quotaLimit.limits : [];
+
+            const tokenLimits = limitItems.filter(item =>
+                String(item.type || '').toUpperCase().includes('TOKEN')
+            );
+
+            const cycleLimit = tokenLimits.find(item =>
+                Number(item.unit) === 3 && Number(item.number) === 5
+            ) || tokenLimits[0] || null;
+
+            const weeklyLimit = tokenLimits.find(item =>
+                Number(item.unit) === 6 && Number(item.number) === 1
+            ) || tokenLimits[1] || null;
+
+            const cyclePercent = clampPercent(cycleLimit?.percentage);
+            const weeklyPercent = clampPercent(weeklyLimit?.percentage);
+            const cycleTotal = planLimits.cycleMax;
+            const weeklyTotal = planLimits.weeklyMax;
+            const cycleUsed = Math.round((cycleTotal * cyclePercent) / 100);
+            const weeklyUsed = Math.round((weeklyTotal * weeklyPercent) / 100);
+
+            const timeLimit = limitItems.find(item =>
+                String(item.type || '').toUpperCase().includes('TIME_LIMIT')
+            ) || null;
+
+            const toolTotals = toolUsage.totalUsage || {};
+            const usageDetails = Array.isArray(timeLimit?.usageDetails) ? timeLimit.usageDetails : [];
+            const detailMap = usageDetails.reduce((acc, item) => {
+                if (item && item.modelCode) {
+                    acc[item.modelCode] = Number(item.usage || 0);
+                }
+                return acc;
+            }, {});
+
+            const mcpSharedTotal = Number(timeLimit?.usage || 0);
+            const mcpSharedUsed = Number(
+                timeLimit?.currentValue ?? toolTotals.totalSearchMcpCount ?? 0
+            );
+
+            const mcpUsage = {
+                shared: {
+                    used: mcpSharedUsed,
+                    total: mcpSharedTotal,
+                    percent: clampPercent(timeLimit?.percentage),
+                    reset: toTimestamp(timeLimit?.nextResetTime)
+                },
+                web_search: {
+                    used: detailMap['search-prime'] ?? Number(toolTotals.totalNetworkSearchCount || 0),
+                    total: mcpSharedTotal
+                },
+                web_reader: {
+                    used: detailMap['web-reader'] ?? Number(toolTotals.totalWebReadMcpCount || 0),
+                    total: mcpSharedTotal
+                },
+                vision: {
+                    used: detailMap['zread'] ?? Number(toolTotals.totalZreadMcpCount || 0),
+                    total: mcpSharedTotal
+                }
+            };
+
+            const modelBalances = {};
+            if (Array.isArray(modelUsage.modelDetails)) {
+                modelUsage.modelDetails.forEach(item => {
+                    const modelId = item.model || item.modelCode || item.name;
+                    if (!modelId) return;
+                    const used = Number(item.used || item.usedTokens || item.usedCount || 0);
+                    const total = Number(item.total || item.totalTokens || item.quota || 0);
+                    modelBalances[modelId] = {
+                        used,
+                        total,
+                        remaining: Number(item.remaining || Math.max(total - used, 0))
+                    };
+                });
+            }
+
+            const trendLabels = Array.isArray(modelUsage.x_time) ? modelUsage.x_time : [];
+            const trendTokens = Array.isArray(modelUsage.tokensUsage)
+                ? modelUsage.tokensUsage.map(v => Number(v || 0))
+                : [];
+            const trendCalls = Array.isArray(modelUsage.modelCallCount)
+                ? modelUsage.modelCallCount.map(v => Number(v || 0))
+                : [];
+            const totalCalls24h = Number(modelUsage.totalUsage?.totalModelCallCount || 0);
+            const totalTokens24h = Number(modelUsage.totalUsage?.totalTokensUsage || 0);
+
+            return {
+                user: {
+                    tokens24h: totalTokens24h,
+                    calls24h: totalCalls24h,
+                    cyclePercent,
+                    source: rawData.baseUrl || '--'
+                },
+                plan: {
+                    type: planType,
+                    expiry: null,
+                    cycleUsed,
+                    cycleTotal,
+                    cyclePercent,
+                    cycleReset: toTimestamp(cycleLimit?.nextResetTime)
+                },
+                weekly: {
+                    used: weeklyUsed,
+                    total: weeklyTotal,
+                    percent: weeklyPercent,
+                    reset: toTimestamp(weeklyLimit?.nextResetTime),
+                    estimated: !weeklyLimit
+                },
+                modelBalances,
+                modelSummary: {
+                    totalCalls24h,
+                    totalTokens24h,
+                    latestCalls: trendCalls.length ? trendCalls[trendCalls.length - 1] : 0,
+                    latestTokens: trendTokens.length ? trendTokens[trendTokens.length - 1] : 0
+                },
+                mcpUsage,
+                trend: {
+                    labels: trendLabels,
+                    tokens: trendTokens,
+                    calls: trendCalls
+                }
+            };
+        }
+
+        // ==================== UI Updates ====================
+        function updateUI() {
+            const data = state.data;
+            if (!data) return;
+
+            // Update account selector
+            if (state.apiKeys.length > 1) {
+                updateAccountSelector();
+            }
+
+            // Update plan info
+            updatePlanInfo(data.plan);
+
+            // Update cycle info
+            updateCycleInfo(data.plan);
+
+            // Update weekly quota
+            updateWeeklyInfo(data.weekly);
+
+            // Update account status
+            updateAccountStatus(data.user);
+
+            // Update model balances
+            updateModelBalances(data.modelBalances);
+
+            // Update MCP tools
+            updateMcpTools(data.mcpUsage);
+
+            // Update detailed table
+            updateDetailedTable(data);
+
+            // Update chart
+            updateChart(data);
+        }
+
+        function updateAccountSelector() {
+            const container = document.getElementById('accountSelector');
+            const tabs = document.getElementById('accountTabs');
+            const hint = document.getElementById('accountTrackingHint');
+            const currentKey = state.apiKeys[state.currentKeyIndex];
+            const tracking = getKeyTracking(currentKey);
+
+            container.classList.remove('hidden');
+            tabs.innerHTML = state.apiKeys.map((key, index) => `
+                <button
+                    class="px-3 py-1 rounded-lg text-sm font-medium transition-all ${index === state.currentKeyIndex ? 'bg-blue-500 text-white' : 'btn-secondary'}"
+                    onclick="switchAccount(${index})"
+                >
+                    账户 ${index + 1} · ${maskApiKey(key)}${state.keyTracking[key]?.delta?.tokens ? ` · Δ${formatNumber(state.keyTracking[key].delta.tokens)}` : ''}
+                </button>
+            `).join('');
+
+            if (tracking?.delta) {
+                hint.textContent = `本地追踪（估算）: ΔTokens ${formatNumber(tracking.delta.tokens)} · Δ调用 ${formatNumber(tracking.delta.calls)} · ΔMCP ${formatNumber(tracking.delta.mcp)}。`;
+            } else {
+                hint.textContent = '本地追踪（估算）: 首次加载后将记录该 key 的增量。';
+            }
+        }
+
+        function resetCurrentAccountTracking() {
+            if (state.apiKeys.length === 0) return;
+            const key = state.apiKeys[state.currentKeyIndex];
+            if (!state.data) {
+                showError('请先查询一次当前账户，再重置追踪基线。');
+                return;
+            }
+
+            const snapshot = buildTrackingSnapshot(state.data);
+            state.keyTracking[key] = {
+                baseline: snapshot,
+                latest: snapshot,
+                delta: { tokens: 0, calls: 0, mcp: 0, cycle: 0, weekly: 0 },
+                updatedAt: Date.now()
+            };
+            saveKeyTracking();
+            updateUI();
+            updateKeyStatus(`已重置账户 ${state.currentKeyIndex + 1}（${maskApiKey(key)}）追踪基线`);
+        }
+
+        function switchAccount(index) {
+            state.currentKeyIndex = index;
+            const cachedData = state.accountData[index];
+            if (cachedData) {
+                state.data = cachedData;
+                updateUI();
+                updateKeyStatus(`当前查看: 账户 ${index + 1}（${maskApiKey(state.apiKeys[index])}）`);
+            }
+            refreshData();
+        }
+
+        function updatePlanInfo(plan) {
+            const badge = document.getElementById('planBadge');
+            const expiry = document.getElementById('planExpiry');
+
+            badge.className = `badge badge-${plan.type}`;
+            badge.textContent = plan.type.toUpperCase();
+
+            if (plan.expiry) {
+                const expiryDate = new Date(plan.expiry);
+                expiry.textContent = `有效期至 ${formatDate(expiryDate)}`;
+            } else {
+                expiry.textContent = '';
+            }
+        }
+
+        function updateCycleInfo(plan) {
+            document.getElementById('cycleUsed').textContent = plan.cycleUsed;
+            document.getElementById('cycleTotal').textContent = plan.cycleTotal;
+
+            const percent = plan.cycleTotal > 0 ? (plan.cycleUsed / plan.cycleTotal) * 100 : 0;
+            const progress = document.getElementById('cycleProgress');
+            progress.style.width = `${percent}%`;
+            progress.style.backgroundColor = 'var(--success-color)';
+
+            if (percent > 80) {
+                progress.style.backgroundColor = 'var(--danger-color)';
+            } else if (percent > 50) {
+                progress.style.backgroundColor = 'var(--warning-color)';
+            }
+
+            if (plan.cycleReset) {
+                document.getElementById('cycleReset').textContent = formatTime(new Date(plan.cycleReset));
+            } else {
+                document.getElementById('cycleReset').textContent = '--';
+            }
+        }
+
+        function updateWeeklyInfo(weekly) {
+            document.getElementById('weeklyPercent').textContent = `${weekly.percent}%`;
+
+            const progress = document.getElementById('weeklyProgress');
+            progress.style.width = `${weekly.percent}%`;
+            progress.style.backgroundColor = 'var(--warning-color)';
+
+            if (weekly.percent > 80) {
+                progress.style.backgroundColor = 'var(--danger-color)';
+            } else if (weekly.percent > 50) {
+                progress.style.backgroundColor = 'var(--warning-color)';
+            } else {
+                progress.style.backgroundColor = 'var(--success-color)';
+            }
+
+            if (weekly.reset) {
+                document.getElementById('weeklyReset').textContent = formatDate(new Date(weekly.reset));
+            } else if (weekly.estimated) {
+                document.getElementById('weeklyReset').textContent = '接口未返回';
+            } else {
+                document.getElementById('weeklyReset').textContent = '--';
+            }
+        }
+
+        function updateAccountStatus(user) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const balance = document.getElementById('accountBalance');
+            balance.textContent = `${formatNumber(user.tokens24h || 0)} tokens`;
+
+            if ((user.cyclePercent || 0) >= 90) {
+                statusDot.className = 'status-dot status-danger';
+                statusText.textContent = '5小时额度接近上限';
+            } else if ((user.cyclePercent || 0) >= 70) {
+                statusDot.className = 'status-dot status-warning';
+                statusText.textContent = '5小时额度消耗较快';
+            } else {
+                statusDot.className = 'status-dot status-success';
+                statusText.textContent = '正常';
+            }
+        }
+
+        function updateModelBalances(balances) {
+            const container = document.getElementById('modelBalances');
+
+            if (Object.keys(balances).length === 0) {
+                const summary = state.data?.modelSummary || {};
+                container.innerHTML = `
+                    <div class="p-3 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-secondary)">
+                        当前官方接口仅返回模型总用量，不返回单模型余额。
+                    </div>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                            <span class="font-medium">24h 总调用次数</span>
+                            <span class="font-semibold">${formatNumber(summary.totalCalls24h || 0)}</span>
+                        </div>
+                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                            <span class="font-medium">24h 总 Token 用量</span>
+                            <span class="font-semibold">${formatNumber(summary.totalTokens24h || 0)}</span>
+                        </div>
+                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                            <span class="font-medium">最近一小时 Token</span>
+                            <span class="font-semibold">${formatNumber(summary.latestTokens || 0)}</span>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = Object.entries(balances).map(([model, data]) => {
+                const modelInfo = CONFIG.models.find(m => m.id === model) || { name: model, color: '#6b7280' };
+                const remaining = data.remaining || (data.total - data.used);
+                const percent = data.total > 0 ? (remaining / data.total) * 100 : 100;
+
+                return `
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full" style="background-color: ${modelInfo.color}"></div>
+                                <span class="font-medium">${modelInfo.name}</span>
+                            </div>
+                            <span class="text-sm">${formatNumber(remaining)} / ${formatNumber(data.total)}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="background-color: ${modelInfo.color}; width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateMcpTools(mcpUsage) {
+            const container = document.getElementById('mcpTools');
+            const shared = mcpUsage?.shared || { used: 0, total: 0, percent: 0, reset: null };
+            const sharedRemaining = Math.max((shared.total || 0) - (shared.used || 0), 0);
+
+            const summaryBlock = `
+                <div class="p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium">MCP 共享额度</span>
+                        <span class="font-semibold">${formatNumber(shared.used || 0)} / ${formatNumber(shared.total || 0)}</span>
+                    </div>
+                    <div class="text-xs mt-1" style="color: var(--text-secondary)">
+                        剩余: ${formatNumber(sharedRemaining)} · 已用 ${shared.percent || 0}%
+                    </div>
+                </div>
+            `;
+
+            const toolBlocks = CONFIG.mcpTools.map(tool => {
+                const usage = mcpUsage[tool.id] || { used: 0, total: shared.total || 0 };
+                const percent = Number(shared.total || 0) > 0
+                    ? Math.round((Number(usage.used || 0) / Number(shared.total)) * 100)
+                    : 0;
+                return `
+                    <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">${tool.icon}</span>
+                            <span class="font-medium">${tool.name}</span>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-semibold">${formatNumber(usage.used || 0)}</div>
+                            <div class="text-xs" style="color: var(--text-secondary)">
+                                占共享额度 ${percent}%
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = summaryBlock + toolBlocks;
+        }
+
+        function updateDetailedTable(data) {
+            const tbody = document.getElementById('usageTableBody');
+            const rows = [];
+
+            // Cycle row
+            rows.push({
+                name: '5小时周期',
+                used: data.plan.cycleUsed,
+                total: data.plan.cycleTotal,
+                remaining: data.plan.cycleTotal - data.plan.cycleUsed
+            });
+
+            // Weekly row
+            rows.push({
+                name: '每周额度',
+                used: data.weekly.used,
+                total: data.weekly.total,
+                remaining: data.weekly.total - data.weekly.used
+            });
+
+            // MCP shared quota row
+            rows.push({
+                name: 'MCP 共享额度',
+                used: data.mcpUsage?.shared?.used || 0,
+                total: data.mcpUsage?.shared?.total || 0,
+                remaining: Math.max((data.mcpUsage?.shared?.total || 0) - (data.mcpUsage?.shared?.used || 0), 0)
+            });
+
+            // Model rows
+            Object.entries(data.modelBalances).forEach(([model, balance]) => {
+                const modelInfo = CONFIG.models.find(m => m.id === model) || { name: model };
+                rows.push({
+                    name: modelInfo.name,
+                    used: balance.used,
+                    total: balance.total,
+                    remaining: balance.remaining || balance.total - balance.used
+                });
+            });
+
+            tbody.innerHTML = rows.map(row => {
+                const percent = row.total > 0 ? (row.remaining / row.total) * 100 : 100;
+                let status = 'success';
+                if (percent < 20) status = 'danger';
+                else if (percent < 50) status = 'warning';
+
+                return `
+                    <tr style="border-bottom: 1px solid var(--border-color)">
+                        <td class="py-3 px-4">${row.name}</td>
+                        <td class="py-3 px-4 text-right">${formatNumber(row.used)}</td>
+                        <td class="py-3 px-4 text-right">${formatNumber(row.total)}</td>
+                        <td class="py-3 px-4 text-right font-medium">${formatNumber(row.remaining)}</td>
+                        <td class="py-3 px-4">
+                            <span class="status-dot status-${status}"></span>
+                            <span class="text-sm">${percent.toFixed(1)}% 剩余</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ==================== Chart ====================
+        function initChart() {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+
+            state.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '每小时 Token 用量',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'var(--border-color)'
+                            },
+                            ticks: {
+                                color: 'var(--text-secondary)'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'var(--border-color)'
+                            },
+                            ticks: {
+                                color: 'var(--text-secondary)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(data = null) {
+            if (!state.chart) return;
+
+            const trend = data?.trend || {};
+            const hasTrendData =
+                Array.isArray(trend.labels) &&
+                Array.isArray(trend.tokens) &&
+                trend.labels.length > 0 &&
+                trend.labels.length === trend.tokens.length;
+
+            if (hasTrendData) {
+                state.chart.data.labels = trend.labels.map(label => {
+                    const parts = String(label).split(' ');
+                    return parts.length > 1 ? parts[1] : label;
+                });
+                state.chart.data.datasets[0].data = trend.tokens;
+                state.chart.update();
+                return;
+            }
+
+            if (document.getElementById('saveHistory').checked) {
+                const history = JSON.parse(localStorage.getItem('glm_history') || '[]');
+                const now = Date.now();
+                const dayAgo = now - 24 * 60 * 60 * 1000;
+                const recentHistory = history
+                    .filter(h => h.timestamp > dayAgo)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+
+                if (recentHistory.length > 0) {
+                    state.chart.data.labels = recentHistory.map(h =>
+                        new Date(h.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                    );
+                    state.chart.data.datasets[0].data = recentHistory.map(h => h.cycleUsed || 0);
+                    state.chart.update();
+                    return;
+                }
+            }
+
+            state.chart.data.labels = ['无数据'];
+            state.chart.data.datasets[0].data = [0];
+            state.chart.update();
+        }
+
+        function saveHistoryData(data) {
+            if (!document.getElementById('saveHistory').checked) return;
+
+            const history = JSON.parse(localStorage.getItem('glm_history') || '[]');
+            history.push({
+                timestamp: Date.now(),
+                cycleUsed: data.plan?.cycleUsed || 0,
+                weeklyPercent: data.weekly?.percent || 0
+            });
+
+            // Keep only last 100 entries
+            localStorage.setItem('glm_history', JSON.stringify(history.slice(-100)));
+        }
+
+        // ==================== Theme ====================
+        function initTheme() {
+            const savedTheme = localStorage.getItem('glm_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('glm_theme', newTheme);
+            updateThemeIcon(newTheme);
+
+            // Update chart colors
+            if (state.chart) {
+                const textColor = newTheme === 'dark' ? '#94a3b8' : '#64748b';
+                const gridColor = newTheme === 'dark' ? '#475569' : '#e2e8f0';
+
+                state.chart.options.scales.x.ticks.color = textColor;
+                state.chart.options.scales.y.ticks.color = textColor;
+                state.chart.options.scales.x.grid.color = gridColor;
+                state.chart.options.scales.y.grid.color = gridColor;
+                state.chart.update();
+            }
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            if (theme === 'dark') {
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>';
+            } else {
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
+            }
+        }
+
+        // ==================== Settings Panel ====================
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            panel.classList.toggle('hidden');
+        }
+
+        function updateRefreshInterval(shouldPersist = true) {
+            if (state.refreshTimer) {
+                clearInterval(state.refreshTimer);
+                state.refreshTimer = null;
+            }
+
+            const interval = parseInt(document.getElementById('refreshInterval').value);
+            if (interval > 0) {
+                state.refreshTimer = setInterval(refreshData, interval);
+            }
+
+            if (shouldPersist) {
+                saveSettings();
+            }
+        }
+
+        // ==================== Utilities ====================
+        function showLoading(show) {
+            document.getElementById('loadingState').classList.toggle('hidden', !show);
+        }
+
+        function showError(message) {
+            const alert = document.getElementById('errorAlert');
+            document.getElementById('errorMessage').textContent = message;
+            alert.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('errorAlert').classList.add('hidden');
+        }
+
+        function updateLastRefresh() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent =
+                `最后更新: ${now.toLocaleTimeString('zh-CN')}`;
+        }
+
+        function formatDate(date) {
+            if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+                return '--';
+            }
+            return date.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+        }
+
+        function formatTime(date) {
+            if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+                return '--';
+            }
+            const now = new Date();
+            const diff = date - now;
+
+            if (diff < 0) return '已过期';
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+            if (hours > 0) {
+                return `${hours}小时${minutes}分钟后`;
+            }
+            return `${minutes}分钟后`;
+        }
+
+        function formatNumber(num) {
+            const safeNum = Number(num || 0);
+            if (safeNum >= 10000000) {
+                return (safeNum / 10000000).toFixed(1) + '千万';
+            }
+            if (safeNum >= 10000) {
+                return (safeNum / 10000).toFixed(1) + '万';
+            }
+            return safeNum.toLocaleString();
+        }
+    </script>
+</body>
+</html>
