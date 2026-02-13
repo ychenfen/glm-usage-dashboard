@@ -119,6 +119,11 @@
             transition: all 0.2s ease;
         }
 
+        .secret-obscured {
+            -webkit-text-security: disc;
+            text-security: disc;
+        }
+
         .input-field:focus {
             outline: none;
             border-color: var(--accent-color);
@@ -397,10 +402,15 @@
                     </div>
                 </div>
                 <div>
-                    <label id="apiKeyLabel" class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
-                        输入 API Key（支持多个 Key，每行一个）
-                    </label>
-                    <textarea id="apiKeyInput" class="input-field h-24 font-mono text-sm" placeholder="请输入 API Key，支持每行一个用于多账户对比"></textarea>
+                    <div class="flex items-center justify-between mb-2">
+                        <label id="apiKeyLabel" class="block text-sm font-medium" style="color: var(--text-secondary)">
+                            输入 API Key（支持多个 Key，每行一个）
+                        </label>
+                        <button id="toggleApiInputBtn" class="btn btn-secondary py-1 px-3 text-xs" onclick="toggleApiInputVisibility()" type="button">
+                            显示明文
+                        </button>
+                    </div>
+                    <textarea id="apiKeyInput" class="input-field h-24 font-mono text-sm secret-obscured" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="请输入 API Key，支持每行一个用于多账户对比"></textarea>
                 </div>
                 <div id="platformEndpointHint" class="text-xs" style="color: var(--text-secondary)"></div>
                 <div class="flex items-center gap-4">
@@ -441,6 +451,27 @@
                         <input type="checkbox" id="saveHistory" class="w-4 h-4 rounded" checked onchange="saveSettings()">
                         <span class="text-sm">保存历史记录以显示趋势图</span>
                     </label>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="autoFillApiKeys" class="w-4 h-4 rounded" onchange="saveSettings(); loadApiKeys()">
+                        <span class="text-sm">自动回填 API Key 到输入框（不建议公共环境开启）</span>
+                    </label>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="maskApiInput" class="w-4 h-4 rounded" checked onchange="saveSettings(); applyApiInputMask()">
+                        <span class="text-sm">隐藏 API Key 输入（防肩窥）</span>
+                    </label>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                        API Key 存储模式
+                    </label>
+                    <select id="keyStorageMode" class="input-field" onchange="saveSettings(); handleKeyStorageModeChange()">
+                        <option value="local">本地长期（localStorage）</option>
+                        <option value="session">仅当前会话（sessionStorage）</option>
+                    </select>
                 </div>
             </div>
         </section>
@@ -808,6 +839,25 @@
                     ],
                     mcpTools: [],
                     validateKey: (key) => key.length >= 20 && /^sk-[a-zA-Z0-9._-]+$/.test(key)
+                },
+                stepfun: {
+                    id: 'stepfun',
+                    name: 'StepFun',
+                    sourceLabel: 'StepFun OpenAPI',
+                    keyLabel: '输入 StepFun API Key（支持多个 Key，每行一个）',
+                    keyPlaceholder: '请输入 StepFun API Key...\n建议格式: sk-...\n当前公开可查账户余额接口 /v1/accounts',
+                    authHint: 'Bearer Key（可查询账户余额与账户信息）',
+                    endpointHint: '接口: /v1/accounts（余额）+ /v1/models（模型列表）',
+                    supports: { cycleQuota: false, weeklyQuota: false, mcp: false },
+                    baseUrl: 'https://api.stepfun.com/v1',
+                    models: [
+                        { id: 'balance_total', name: '账户余额', color: '#d4a24c' },
+                        { id: 'step-2', name: 'Step-2', color: '#d97757' },
+                        { id: 'step-1v', name: 'Step-1V', color: '#788c5d' },
+                        { id: 'step-1-flash', name: 'Step-1 Flash', color: '#6a9bcc' }
+                    ],
+                    mcpTools: [],
+                    validateKey: (key) => key.length >= 20 && /^sk-[a-zA-Z0-9._-]+$/.test(key)
                 }
             }
         };
@@ -885,6 +935,7 @@
             authHint.textContent = platform.authHint;
             endpointHint.textContent = `数据接口: ${platform.endpointHint}`;
             source.textContent = `数据来源: ${platform.sourceLabel} | 本仪表盘不存储您的 API Key 到远程服务器`;
+            applyApiInputMask();
         }
 
         function changePlatform() {
@@ -907,38 +958,131 @@
             loadApiKeys();
         }
 
-        function loadSettings() {
-            const settings = JSON.parse(
+        function getDashboardSettings() {
+            const parsed = JSON.parse(
                 localStorage.getItem('llm_dashboard_settings') ||
                 localStorage.getItem('glm_settings') ||
                 '{}'
             );
             const defaultProxy = window.location.protocol === 'file:' ? 'corsproxy' : 'none';
-            document.getElementById('refreshInterval').value = settings.refreshInterval || '60000';
-            document.getElementById('corsProxy').value = settings.corsProxy || defaultProxy;
-            document.getElementById('saveHistory').checked = settings.saveHistory !== false;
+            return {
+                refreshInterval: parsed.refreshInterval || '60000',
+                corsProxy: parsed.corsProxy || defaultProxy,
+                saveHistory: parsed.saveHistory !== false,
+                autoFillApiKeys: parsed.autoFillApiKeys === true,
+                maskApiInput: parsed.maskApiInput !== false,
+                keyStorageMode: parsed.keyStorageMode === 'session' ? 'session' : 'local'
+            };
+        }
+
+        function getKeyStorageArea(mode = null) {
+            const settings = getDashboardSettings();
+            const finalMode = mode || document.getElementById('keyStorageMode')?.value || settings.keyStorageMode;
+            return finalMode === 'session' ? sessionStorage : localStorage;
+        }
+
+        function getSecondaryKeyStorageArea() {
+            return getKeyStorageArea() === localStorage ? sessionStorage : localStorage;
+        }
+
+        function getLegacyStorageKey(name) {
+            if (state.platformId !== 'glm') return null;
+            if (name === 'api_keys') return 'glm_api_keys';
+            if (name === 'key_tracking') return 'glm_key_tracking';
+            return null;
+        }
+
+        function readKeyStoreValue(name, fallback = '{}') {
+            const primary = getKeyStorageArea();
+            const key = getStorageKey(name);
+            let value = primary.getItem(key);
+            if (value === null && primary === localStorage) {
+                const legacyKey = getLegacyStorageKey(name);
+                if (legacyKey) value = localStorage.getItem(legacyKey);
+            }
+            return value === null ? fallback : value;
+        }
+
+        function writeKeyStoreValue(name, value) {
+            const key = getStorageKey(name);
+            const primary = getKeyStorageArea();
+            const secondary = getSecondaryKeyStorageArea();
+            primary.setItem(key, value);
+            secondary.removeItem(key);
+        }
+
+        function removeKeyStoreValue(name) {
+            const key = getStorageKey(name);
+            localStorage.removeItem(key);
+            sessionStorage.removeItem(key);
+            const legacyKey = getLegacyStorageKey(name);
+            if (legacyKey) {
+                localStorage.removeItem(legacyKey);
+            }
+        }
+
+        function applyApiInputMask(forceValue = null) {
+            const input = document.getElementById('apiKeyInput');
+            const checkbox = document.getElementById('maskApiInput');
+            const button = document.getElementById('toggleApiInputBtn');
+            if (!input || !checkbox || !button) return;
+
+            const shouldMask = forceValue === null ? checkbox.checked : Boolean(forceValue);
+            checkbox.checked = shouldMask;
+            input.classList.toggle('secret-obscured', shouldMask);
+            button.textContent = shouldMask ? '显示明文' : '隐藏明文';
+        }
+
+        function toggleApiInputVisibility() {
+            const checkbox = document.getElementById('maskApiInput');
+            if (!checkbox) return;
+            checkbox.checked = !checkbox.checked;
+            applyApiInputMask();
+            saveSettings();
+        }
+
+        function handleKeyStorageModeChange() {
+            state.apiKeys = [];
+            state.currentKeyIndex = 0;
+            state.accountData = {};
+            state.keyTracking = {};
+            state.requestId = 0;
+            loadApiKeys();
+        }
+
+        function loadSettings() {
+            const settings = getDashboardSettings();
+            document.getElementById('refreshInterval').value = settings.refreshInterval;
+            document.getElementById('corsProxy').value = settings.corsProxy;
+            document.getElementById('saveHistory').checked = settings.saveHistory;
+            document.getElementById('autoFillApiKeys').checked = settings.autoFillApiKeys;
+            document.getElementById('maskApiInput').checked = settings.maskApiInput;
+            document.getElementById('keyStorageMode').value = settings.keyStorageMode;
+            applyApiInputMask(settings.maskApiInput);
         }
 
         function saveSettings() {
             const settings = {
                 refreshInterval: document.getElementById('refreshInterval').value,
                 corsProxy: document.getElementById('corsProxy').value,
-                saveHistory: document.getElementById('saveHistory').checked
+                saveHistory: document.getElementById('saveHistory').checked,
+                autoFillApiKeys: document.getElementById('autoFillApiKeys').checked,
+                maskApiInput: document.getElementById('maskApiInput').checked,
+                keyStorageMode: document.getElementById('keyStorageMode').value
             };
             localStorage.setItem('llm_dashboard_settings', JSON.stringify(settings));
+            applyApiInputMask(settings.maskApiInput);
         }
 
         function loadKeyTracking() {
-            const storageValue = localStorage.getItem(getStorageKey('key_tracking')) ||
-                (state.platformId === 'glm' ? localStorage.getItem('glm_key_tracking') : null) ||
-                '{}';
+            const storageValue = readKeyStoreValue('key_tracking', '{}');
             const raw = JSON.parse(storageValue);
             state.keyTracking = raw && typeof raw === 'object' ? raw : {};
             pruneKeyTracking();
         }
 
         function saveKeyTracking() {
-            localStorage.setItem(getStorageKey('key_tracking'), JSON.stringify(state.keyTracking));
+            writeKeyStoreValue('key_tracking', JSON.stringify(state.keyTracking));
         }
 
         function pruneKeyTracking() {
@@ -953,9 +1097,7 @@
         }
 
         function loadApiKeys() {
-            const storageValue = localStorage.getItem(getStorageKey('api_keys')) ||
-                (state.platformId === 'glm' ? localStorage.getItem('glm_api_keys') : null) ||
-                '[]';
+            const storageValue = readKeyStoreValue('api_keys', '[]');
             const keys = JSON.parse(storageValue);
             state.apiKeys = keys;
             state.accountData = {};
@@ -964,13 +1106,19 @@
             loadKeyTracking();
 
             if (keys.length > 0) {
-                document.getElementById('apiKeyInput').value = keys.join('\n');
-                updateKeyStatus(`${getPlatformConfig().name}: ${keys.length} 个 API Key 已保存`);
+                const autoFill = document.getElementById('autoFillApiKeys').checked;
+                document.getElementById('apiKeyInput').value = autoFill ? keys.join('\n') : '';
+                updateKeyStatus(
+                    autoFill
+                        ? `${getPlatformConfig().name}: ${keys.length} 个 API Key 已保存`
+                        : `${getPlatformConfig().name}: 已加载 ${keys.length} 个 API Key（未自动回填）`
+                );
                 refreshData();
             } else {
                 document.getElementById('apiKeyInput').value = '';
                 updateKeyStatus('');
             }
+            applyApiInputMask();
         }
 
         function saveApiKeys() {
@@ -1004,8 +1152,11 @@
             state.requestId = 0;
             pruneKeyTracking();
             saveKeyTracking();
-            localStorage.setItem(getStorageKey('api_keys'), JSON.stringify(validKeys));
+            writeKeyStoreValue('api_keys', JSON.stringify(validKeys));
             updateKeyStatus(`${platform.name}: 已保存 ${validKeys.length} 个 API Key`);
+            if (!document.getElementById('autoFillApiKeys').checked) {
+                document.getElementById('apiKeyInput').value = '';
+            }
             hideError();
 
             refreshData();
@@ -1018,14 +1169,10 @@
                 state.accountData = {};
                 state.keyTracking = {};
                 state.requestId = 0;
-                localStorage.removeItem(getStorageKey('api_keys'));
-                localStorage.removeItem(getStorageKey('key_tracking'));
+                removeKeyStoreValue('api_keys');
+                removeKeyStoreValue('key_tracking');
                 localStorage.removeItem(getHistoryStorageKey());
-                if (state.platformId === 'glm') {
-                    localStorage.removeItem('glm_api_keys');
-                    localStorage.removeItem('glm_key_tracking');
-                    localStorage.removeItem('glm_history');
-                }
+                if (state.platformId === 'glm') localStorage.removeItem('glm_history');
                 document.getElementById('apiKeyInput').value = '';
                 document.getElementById('dashboardContent').classList.add('hidden');
                 updateKeyStatus(`${getPlatformConfig().name}: 已清除所有 API Key`);
@@ -1430,6 +1577,29 @@
             };
         }
 
+        async function fetchStepFunData(apiKey) {
+            const platform = getPlatformConfig('stepfun');
+            const accountUrl = buildUrlWithQuery(platform.baseUrl, '/accounts', { _ts: Date.now() });
+            const modelsUrl = buildUrlWithQuery(platform.baseUrl, '/models', { _ts: Date.now() });
+            const authCandidates = buildBearerCandidates(apiKey, { 'Content-Type': 'application/json' });
+
+            const account = await requestWithHeaderFallback(accountUrl, authCandidates);
+            let models = { data: [] };
+            try {
+                models = await requestWithHeaderFallback(modelsUrl, authCandidates);
+            } catch (error) {
+                console.warn('StepFun models endpoint unavailable:', error.message);
+            }
+
+            return {
+                platform: 'stepfun',
+                baseUrl: platform.baseUrl,
+                queryWindow: getLast24HourUnixWindow(),
+                account,
+                models
+            };
+        }
+
         async function fetchAllData(apiKey) {
             showLoading(true);
             hideError();
@@ -1443,6 +1613,8 @@
                     return fetchAnthropicData(apiKey);
                 case 'deepseek':
                     return fetchDeepSeekData(apiKey);
+                case 'stepfun':
+                    return fetchStepFunData(apiKey);
                 default:
                     throw new Error(`暂不支持的平台: ${state.platformId}`);
             }
@@ -1514,6 +1686,8 @@
                     return parseAnthropicData(rawData);
                 case 'deepseek':
                     return parseDeepSeekData(rawData);
+                case 'stepfun':
+                    return parseStepFunData(rawData);
                 default:
                     throw new Error(`没有可用的解析器: ${platformId}`);
             }
@@ -1877,6 +2051,65 @@
                     },
                     supports: getPlatformConfig('deepseek').supports,
                     notes: ['DeepSeek 当前公开接口以余额查询为主']
+                }
+            };
+        }
+
+        function parseStepFunData(rawData) {
+            const account = normalizeApiData(rawData.account);
+            const accountInfo = Array.isArray(account?.accounts) ? (account.accounts[0] || {}) : account;
+            const modelsPayload = normalizeApiData(rawData.models);
+            const modelItems = Array.isArray(modelsPayload?.data)
+                ? modelsPayload.data
+                : (Array.isArray(modelsPayload) ? modelsPayload : []);
+
+            const totalBalance = safeNumber(
+                accountInfo?.balance ??
+                account?.balance ??
+                accountInfo?.available_balance ??
+                account?.available_balance,
+                0
+            );
+            const currency = accountInfo?.currency || account?.currency || 'CNY';
+            const unavailable = buildUnavailableQuota('StepFun', '当前公开接口以账户余额为主，分时用量/账单未开放');
+
+            return {
+                user: {
+                    tokens24h: 0,
+                    calls24h: 0,
+                    cyclePercent: 0,
+                    source: rawData.baseUrl || '--'
+                },
+                plan: unavailable.plan,
+                weekly: unavailable.weekly,
+                modelBalances: {
+                    balance_total: {
+                        used: 0,
+                        total: totalBalance,
+                        remaining: totalBalance
+                    }
+                },
+                modelSummary: {
+                    totalCalls24h: 0,
+                    totalTokens24h: 0,
+                    latestCalls: 0,
+                    latestTokens: 0
+                },
+                mcpUsage: buildDefaultMcpUsage(0, 0),
+                trend: {
+                    labels: [],
+                    tokens: [],
+                    calls: []
+                },
+                meta: {
+                    platform: 'stepfun',
+                    currency,
+                    balance: {
+                        total: totalBalance
+                    },
+                    modelCount: modelItems.length,
+                    supports: getPlatformConfig('stepfun').supports,
+                    notes: ['StepFun 已接入 /v1/accounts；当前公开接口未提供统一分时用量账单']
                 }
             };
         }
