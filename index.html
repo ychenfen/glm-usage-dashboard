@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GLM Coding Plan 用量仪表盘</title>
+    <title>多平台 LLM 用量仪表盘</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -191,9 +191,11 @@
         .badge-lite { background-color: #e8e6dc; color: #4a463f; }
         .badge-pro { background-color: #f3e5c7; color: #8f6a2e; }
         .badge-max { background-color: #f4d9cf; color: #a24f38; }
+        .badge-metered { background-color: #e9f1e8; color: #4f6f3f; }
         [data-theme="dark"] .badge-lite { background-color: #3d3a35; color: #d1cec4; }
         [data-theme="dark"] .badge-pro { background-color: #4b3d25; color: #f6cf7c; }
         [data-theme="dark"] .badge-max { background-color: #57362d; color: #f0a58b; }
+        [data-theme="dark"] .badge-metered { background-color: #2f3c2a; color: #b8d39f; }
 
         .loading-spinner {
             animation: spin 1s linear infinite;
@@ -342,10 +344,10 @@
                     <svg class="w-8 h-8" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                     </svg>
-                    GLM Coding Plan 仪表盘
+                    多平台 LLM 用量仪表盘
                     <span class="claude-badge">Claude Yellow</span>
                 </h1>
-                <p class="text-sm mt-1" style="color: var(--text-secondary)">实时监控您的 API 用量和额度</p>
+                <p class="text-sm mt-1" style="color: var(--text-secondary)">统一查看 GLM / OpenAI / Anthropic / DeepSeek 的用量与成本</p>
             </div>
             <div class="flex items-center gap-3">
                 <span id="lastUpdate" class="text-sm" style="color: var(--text-secondary)"></span>
@@ -378,12 +380,29 @@
                 API Key 管理
             </h2>
             <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
-                        输入 GLM API Key（支持多个 Key，每行一个）
-                    </label>
-                    <textarea id="apiKeyInput" class="input-field h-24 font-mono text-sm" placeholder="请输入您的 GLM API Key...&#10;格式: xxxxxxxx.xxxxxxxxxxxx&#10;支持同时查询多个账户"></textarea>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                            查询平台
+                        </label>
+                        <select id="platformSelect" class="input-field" onchange="changePlatform()"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                            鉴权说明
+                        </label>
+                        <div id="platformAuthHint" class="p-3 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-secondary)">
+                            --
+                        </div>
+                    </div>
                 </div>
+                <div>
+                    <label id="apiKeyLabel" class="block text-sm font-medium mb-2" style="color: var(--text-secondary)">
+                        输入 API Key（支持多个 Key，每行一个）
+                    </label>
+                    <textarea id="apiKeyInput" class="input-field h-24 font-mono text-sm" placeholder="请输入 API Key，支持每行一个用于多账户对比"></textarea>
+                </div>
+                <div id="platformEndpointHint" class="text-xs" style="color: var(--text-secondary)"></div>
                 <div class="flex items-center gap-4">
                     <button id="saveKeyBtn" class="btn" onclick="saveApiKeys()">保存并查询</button>
                     <button class="btn btn-secondary" onclick="clearApiKeys()">清除所有</button>
@@ -448,6 +467,11 @@
                     </button>
                 </div>
                 <div id="accountTrackingHint" class="text-xs mt-2" style="color: var(--text-secondary)"></div>
+            </div>
+
+            <div id="platformMetaCard" class="card mb-6 hidden">
+                <h3 class="text-lg font-semibold mb-3">平台接口详情</h3>
+                <div id="platformMetaBody" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm"></div>
             </div>
 
             <!-- Main Stats Grid -->
@@ -664,7 +688,7 @@
 
         <!-- Footer -->
         <footer class="mt-8 text-center text-sm" style="color: var(--text-secondary)">
-            <p>数据来源: GLM OpenAPI | 本仪表盘不存储您的 API Key 到远程服务器</p>
+            <p id="footerSource">数据来源: 多平台官方 API | 本仪表盘不存储您的 API Key 到远程服务器</p>
             <p class="mt-1">建议使用 VS Code Live Server 以获得最佳体验</p>
         </footer>
     </div>
@@ -672,15 +696,6 @@
     <script>
         // ==================== Configuration ====================
         const CONFIG = {
-            baseUrls: [
-                'https://open.bigmodel.cn',
-                'https://api.z.ai'
-            ],
-            apiEndpoints: {
-                modelUsage: '/api/monitor/usage/model-usage',
-                toolUsage: '/api/monitor/usage/tool-usage',
-                quotaLimit: '/api/monitor/usage/quota/limit'
-            },
             corsProxies: {
                 corsproxy: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
                 allorigins: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -691,7 +706,7 @@
                 pro: { cycleMax: 400, weeklyMax: 10000 },
                 max: { cycleMax: 1000, weeklyMax: 50000 }
             },
-            models: [
+            defaultModels: [
                 { id: 'glm-4-plus', name: 'GLM-4-Plus', color: '#d4a24c' },
                 { id: 'glm-4-0520', name: 'GLM-4-0520', color: '#d97757' },
                 { id: 'glm-4-air', name: 'GLM-4-Air', color: '#6a9bcc' },
@@ -699,15 +714,107 @@
                 { id: 'glm-4-flash', name: 'GLM-4-Flash', color: '#e39c3f' },
                 { id: 'glm-4v', name: 'GLM-4V', color: '#9f6c63' }
             ],
-            mcpTools: [
+            defaultMcpTools: [
                 { id: 'web_search', name: '联网搜索', icon: '🔍' },
                 { id: 'web_reader', name: '网页读取', icon: '📄' },
                 { id: 'vision', name: '视觉理解', icon: '👁️' }
-            ]
+            ],
+            platforms: {
+                glm: {
+                    id: 'glm',
+                    name: 'GLM / Z.AI',
+                    sourceLabel: 'GLM OpenAPI',
+                    keyLabel: '输入 GLM API Key（支持多个 Key，每行一个）',
+                    keyPlaceholder: '请输入 GLM API Key...\n格式: xxxxxxxx.xxxxxxxxxxxx\n支持同时查询多个账户',
+                    authHint: 'Bearer Token（可直接填 key，系统会自动补全 Bearer）',
+                    endpointHint: '接口: /api/monitor/usage/model-usage, /tool-usage, /quota/limit',
+                    supports: { cycleQuota: true, weeklyQuota: true, mcp: true },
+                    baseUrls: ['https://open.bigmodel.cn', 'https://api.z.ai'],
+                    apiEndpoints: {
+                        modelUsage: '/api/monitor/usage/model-usage',
+                        toolUsage: '/api/monitor/usage/tool-usage',
+                        quotaLimit: '/api/monitor/usage/quota/limit'
+                    },
+                    models: [
+                        { id: 'glm-4-plus', name: 'GLM-4-Plus', color: '#d4a24c' },
+                        { id: 'glm-4-0520', name: 'GLM-4-0520', color: '#d97757' },
+                        { id: 'glm-4-air', name: 'GLM-4-Air', color: '#6a9bcc' },
+                        { id: 'glm-4-airx', name: 'GLM-4-AirX', color: '#788c5d' },
+                        { id: 'glm-4-flash', name: 'GLM-4-Flash', color: '#e39c3f' },
+                        { id: 'glm-4v', name: 'GLM-4V', color: '#9f6c63' }
+                    ],
+                    mcpTools: [
+                        { id: 'web_search', name: '联网搜索', icon: '🔍' },
+                        { id: 'web_reader', name: '网页读取', icon: '📄' },
+                        { id: 'vision', name: '视觉理解', icon: '👁️' }
+                    ],
+                    validateKey: (key) => key.length >= 20 && /^[a-zA-Z0-9._-]+$/.test(key)
+                },
+                openai: {
+                    id: 'openai',
+                    name: 'OpenAI',
+                    sourceLabel: 'OpenAI Organization Usage API',
+                    keyLabel: '输入 OpenAI Admin Key（支持多个 Key，每行一个）',
+                    keyPlaceholder: '请输入 OpenAI Admin API Key...\n建议格式: sk-...\n仅组织管理员可查询 usage/cost',
+                    authHint: 'Bearer Admin Key（需组织管理员权限）',
+                    endpointHint: '接口: /v1/organization/usage/completions + /v1/organization/costs',
+                    supports: { cycleQuota: false, weeklyQuota: false, mcp: false },
+                    baseUrl: 'https://api.openai.com/v1',
+                    models: [
+                        { id: 'gpt-5', name: 'GPT-5', color: '#d4a24c' },
+                        { id: 'gpt-4.1', name: 'GPT-4.1', color: '#d97757' },
+                        { id: 'o3', name: 'o3', color: '#788c5d' },
+                        { id: 'gpt-4o', name: 'GPT-4o', color: '#6a9bcc' }
+                    ],
+                    mcpTools: [],
+                    validateKey: (key) => key.length >= 20 && /^sk-[a-zA-Z0-9._-]+$/.test(key)
+                },
+                anthropic: {
+                    id: 'anthropic',
+                    name: 'Anthropic',
+                    sourceLabel: 'Anthropic Admin Usage API',
+                    keyLabel: '输入 Anthropic Admin Key（支持多个 Key，每行一个）',
+                    keyPlaceholder: '请输入 Anthropic Admin Key...\n建议格式: sk-ant-admin-...\n仅组织管理员可查询 Usage/Cost Report',
+                    authHint: 'x-api-key + anthropic-version 头（Admin Key）',
+                    endpointHint: '接口: /v1/organizations/usage_report/messages + /v1/organizations/cost_report',
+                    supports: { cycleQuota: false, weeklyQuota: false, mcp: true },
+                    baseUrl: 'https://api.anthropic.com/v1',
+                    models: [
+                        { id: 'claude-opus-4-1', name: 'Claude Opus 4.1', color: '#d4a24c' },
+                        { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', color: '#d97757' },
+                        { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', color: '#788c5d' }
+                    ],
+                    mcpTools: [
+                        { id: 'web_search', name: 'Web Search', icon: '🔍' },
+                        { id: 'code_execution', name: 'Code Exec', icon: '🧪' },
+                        { id: 'web_fetch', name: 'Web Fetch', icon: '📄' }
+                    ],
+                    validateKey: (key) => key.length >= 24 && /^sk-ant-[a-zA-Z0-9._-]+$/.test(key)
+                },
+                deepseek: {
+                    id: 'deepseek',
+                    name: 'DeepSeek',
+                    sourceLabel: 'DeepSeek Open Platform',
+                    keyLabel: '输入 DeepSeek API Key（支持多个 Key，每行一个）',
+                    keyPlaceholder: '请输入 DeepSeek API Key...\n建议格式: sk-...\n当前官方公开余额接口为 /user/balance',
+                    authHint: 'Bearer Key（公开可查余额，详单通常在控制台）',
+                    endpointHint: '接口: /user/balance（余额）+ 本地增量追踪',
+                    supports: { cycleQuota: false, weeklyQuota: false, mcp: false },
+                    baseUrl: 'https://api.deepseek.com',
+                    models: [
+                        { id: 'balance_total', name: '账户余额', color: '#d4a24c' },
+                        { id: 'deepseek-chat', name: 'DeepSeek Chat', color: '#d4a24c' },
+                        { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', color: '#788c5d' }
+                    ],
+                    mcpTools: [],
+                    validateKey: (key) => key.length >= 20 && /^sk-[a-zA-Z0-9._-]+$/.test(key)
+                }
+            }
         };
 
         // ==================== State Management ====================
         let state = {
+            platformId: 'glm',
             apiKeys: [],
             currentKeyIndex: 0,
             data: {},
@@ -723,6 +830,7 @@
 
         // ==================== Initialization ====================
         document.addEventListener('DOMContentLoaded', () => {
+            initPlatformSelector();
             loadSettings();
             initChart();
             initVisualCharts();
@@ -731,8 +839,80 @@
             loadApiKeys();
         });
 
+        function getPlatformConfig(platformId = state.platformId) {
+            return CONFIG.platforms[platformId] || CONFIG.platforms.glm;
+        }
+
+        function getStorageKey(name) {
+            return `llm_dashboard_${state.platformId}_${name}`;
+        }
+
+        function getHistoryStorageKey() {
+            return getStorageKey('history');
+        }
+
+        function getActiveModels() {
+            return getPlatformConfig().models || CONFIG.defaultModels;
+        }
+
+        function getActiveMcpTools() {
+            const tools = getPlatformConfig().mcpTools;
+            return Array.isArray(tools) ? tools : CONFIG.defaultMcpTools;
+        }
+
+        function initPlatformSelector() {
+            const selector = document.getElementById('platformSelect');
+            const entries = Object.values(CONFIG.platforms);
+            selector.innerHTML = entries.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
+            state.platformId = localStorage.getItem('llm_dashboard_platform') || 'glm';
+            if (!CONFIG.platforms[state.platformId]) {
+                state.platformId = 'glm';
+            }
+            selector.value = state.platformId;
+            applyPlatformMeta();
+        }
+
+        function applyPlatformMeta() {
+            const platform = getPlatformConfig();
+            const label = document.getElementById('apiKeyLabel');
+            const input = document.getElementById('apiKeyInput');
+            const authHint = document.getElementById('platformAuthHint');
+            const endpointHint = document.getElementById('platformEndpointHint');
+            const source = document.getElementById('footerSource');
+
+            label.textContent = platform.keyLabel;
+            input.placeholder = platform.keyPlaceholder;
+            authHint.textContent = platform.authHint;
+            endpointHint.textContent = `数据接口: ${platform.endpointHint}`;
+            source.textContent = `数据来源: ${platform.sourceLabel} | 本仪表盘不存储您的 API Key 到远程服务器`;
+        }
+
+        function changePlatform() {
+            const nextPlatform = document.getElementById('platformSelect').value;
+            if (!CONFIG.platforms[nextPlatform]) return;
+
+            state.platformId = nextPlatform;
+            state.apiKeys = [];
+            state.currentKeyIndex = 0;
+            state.data = {};
+            state.accountData = {};
+            state.keyTracking = {};
+            state.requestId = 0;
+            localStorage.setItem('llm_dashboard_platform', nextPlatform);
+
+            applyPlatformMeta();
+            document.getElementById('dashboardContent').classList.add('hidden');
+            hideError();
+            updateKeyStatus('');
+            loadApiKeys();
+        }
+
         function loadSettings() {
-            const settings = JSON.parse(localStorage.getItem('glm_settings') || '{}');
+            const settings = JSON.parse(
+                localStorage.getItem('llm_dashboard_settings') ||
+                localStorage.getItem('glm_settings') ||
+                '{}'
+            );
             const defaultProxy = window.location.protocol === 'file:' ? 'corsproxy' : 'none';
             document.getElementById('refreshInterval').value = settings.refreshInterval || '60000';
             document.getElementById('corsProxy').value = settings.corsProxy || defaultProxy;
@@ -745,17 +925,20 @@
                 corsProxy: document.getElementById('corsProxy').value,
                 saveHistory: document.getElementById('saveHistory').checked
             };
-            localStorage.setItem('glm_settings', JSON.stringify(settings));
+            localStorage.setItem('llm_dashboard_settings', JSON.stringify(settings));
         }
 
         function loadKeyTracking() {
-            const raw = JSON.parse(localStorage.getItem('glm_key_tracking') || '{}');
+            const storageValue = localStorage.getItem(getStorageKey('key_tracking')) ||
+                (state.platformId === 'glm' ? localStorage.getItem('glm_key_tracking') : null) ||
+                '{}';
+            const raw = JSON.parse(storageValue);
             state.keyTracking = raw && typeof raw === 'object' ? raw : {};
             pruneKeyTracking();
         }
 
         function saveKeyTracking() {
-            localStorage.setItem('glm_key_tracking', JSON.stringify(state.keyTracking));
+            localStorage.setItem(getStorageKey('key_tracking'), JSON.stringify(state.keyTracking));
         }
 
         function pruneKeyTracking() {
@@ -770,14 +953,23 @@
         }
 
         function loadApiKeys() {
-            const keys = JSON.parse(localStorage.getItem('glm_api_keys') || '[]');
+            const storageValue = localStorage.getItem(getStorageKey('api_keys')) ||
+                (state.platformId === 'glm' ? localStorage.getItem('glm_api_keys') : null) ||
+                '[]';
+            const keys = JSON.parse(storageValue);
             state.apiKeys = keys;
+            state.accountData = {};
+            state.currentKeyIndex = 0;
+            state.requestId = 0;
             loadKeyTracking();
 
             if (keys.length > 0) {
                 document.getElementById('apiKeyInput').value = keys.join('\n');
-                updateKeyStatus(`${keys.length} 个 API Key 已保存`);
+                updateKeyStatus(`${getPlatformConfig().name}: ${keys.length} 个 API Key 已保存`);
                 refreshData();
+            } else {
+                document.getElementById('apiKeyInput').value = '';
+                updateKeyStatus('');
             }
         }
 
@@ -787,14 +979,17 @@
                 .map(k => k.trim())
                 .filter(k => k.length > 0);
 
-            // Validate keys - GLM format: xxxxxxxx.xxxxxxxxxxxx (hex string dot alphanumeric)
+            const platform = getPlatformConfig();
             const validKeys = keys.filter(k => {
-                // Accept keys that are at least 20 characters and contain alphanumeric/dot/dash/underscore
-                return k.length >= 20 && /^[a-zA-Z0-9._-]+$/.test(k);
+                const normalized = k.startsWith('Bearer ') ? k.slice(7).trim() : k;
+                if (typeof platform.validateKey === 'function') {
+                    return platform.validateKey(normalized);
+                }
+                return normalized.length >= 20 && /^[a-zA-Z0-9._-]+$/.test(normalized);
             });
 
             if (validKeys.length === 0) {
-                showError('请输入有效的 API Key');
+                showError(`请输入有效的 ${platform.name} API Key`);
                 return;
             }
 
@@ -809,8 +1004,8 @@
             state.requestId = 0;
             pruneKeyTracking();
             saveKeyTracking();
-            localStorage.setItem('glm_api_keys', JSON.stringify(validKeys));
-            updateKeyStatus(`已保存 ${validKeys.length} 个 API Key`);
+            localStorage.setItem(getStorageKey('api_keys'), JSON.stringify(validKeys));
+            updateKeyStatus(`${platform.name}: 已保存 ${validKeys.length} 个 API Key`);
             hideError();
 
             refreshData();
@@ -823,11 +1018,17 @@
                 state.accountData = {};
                 state.keyTracking = {};
                 state.requestId = 0;
-                localStorage.removeItem('glm_api_keys');
-                localStorage.removeItem('glm_key_tracking');
+                localStorage.removeItem(getStorageKey('api_keys'));
+                localStorage.removeItem(getStorageKey('key_tracking'));
+                localStorage.removeItem(getHistoryStorageKey());
+                if (state.platformId === 'glm') {
+                    localStorage.removeItem('glm_api_keys');
+                    localStorage.removeItem('glm_key_tracking');
+                    localStorage.removeItem('glm_history');
+                }
                 document.getElementById('apiKeyInput').value = '';
                 document.getElementById('dashboardContent').classList.add('hidden');
-                updateKeyStatus('已清除所有 API Key');
+                updateKeyStatus(`${getPlatformConfig().name}: 已清除所有 API Key`);
             }
         }
 
@@ -968,16 +1169,34 @@
             return Math.max(0, Math.min(100, num));
         }
 
-        async function requestOnce(url, authHeader) {
+        function safeNumber(value, fallback = 0) {
+            const num = Number(value);
+            return Number.isFinite(num) ? num : fallback;
+        }
+
+        function buildBearerCandidates(apiKey, extraHeaders = {}) {
+            const normalized = String(apiKey || '').trim();
+            if (!normalized) return [];
+            if (normalized.startsWith('Bearer ')) {
+                return [{ ...extraHeaders, Authorization: normalized }];
+            }
+            return [
+                { ...extraHeaders, Authorization: `Bearer ${normalized}` },
+                { ...extraHeaders, Authorization: normalized }
+            ];
+        }
+
+        async function requestJson(url, options = {}) {
             const proxyUrl = getCorsProxyUrl(url);
             const response = await fetch(proxyUrl, {
-                method: 'GET',
+                method: options.method || 'GET',
                 cache: 'no-store',
                 headers: {
-                    'Authorization': authHeader,
+                    'Accept': 'application/json',
                     'Accept-Language': 'en-US,en',
-                    'Content-Type': 'application/json'
-                }
+                    ...options.headers
+                },
+                body: options.body ? JSON.stringify(options.body) : undefined
             });
 
             const responseText = await response.text();
@@ -987,30 +1206,19 @@
                     const errorJson = JSON.parse(responseText);
                     detail = errorJson.msg || errorJson.message || errorJson.error || '';
                 } catch {
-                    detail = responseText.replace(/\s+/g, ' ').trim().slice(0, 150);
+                    detail = responseText.replace(/\s+/g, ' ').trim().slice(0, 180);
                 }
                 throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
             }
 
-            const json = parseJsonResponse(responseText);
-            const code = Number(json.code);
-            if ((json.success === false) || (Number.isFinite(code) && code !== 200)) {
-                throw new Error(`API ${json.code || 'ERR'}: ${json.msg || '请求失败'}`);
-            }
-
-            return json;
+            return parseJsonResponse(responseText);
         }
 
-        async function fetchWithAuth(url, apiKey) {
-            const normalized = apiKey.trim();
-            const authCandidates = normalized.startsWith('Bearer ')
-                ? [normalized]
-                : [normalized, `Bearer ${normalized}`];
-
+        async function requestWithHeaderFallback(url, headerCandidates, options = {}) {
             let lastError = null;
-            for (const authHeader of authCandidates) {
+            for (const headers of headerCandidates) {
                 try {
-                    return await requestOnce(url, authHeader);
+                    return await requestJson(url, { ...options, headers });
                 } catch (error) {
                     lastError = error;
                     if (!/HTTP 401|HTTP 403/.test(error.message)) {
@@ -1018,39 +1226,108 @@
                     }
                 }
             }
-
             throw lastError || new Error('请求失败');
         }
 
-        async function fetchAllData(apiKey) {
-            showLoading(true);
-            hideError();
+        function getLast24HourUnixWindow() {
+            const end = Math.floor(Date.now() / 1000);
+            const start = end - 24 * 60 * 60;
+            return { start, end };
+        }
 
+        function formatTrendLabelFromUnix(unixSeconds) {
+            const ts = safeNumber(unixSeconds, 0) * 1000;
+            if (!ts) return '--';
+            const d = new Date(ts);
+            if (Number.isNaN(d.getTime())) return '--';
+            return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatIsoByUnix(unixSeconds) {
+            const d = new Date(safeNumber(unixSeconds, 0) * 1000);
+            return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+        }
+
+        function extractArray(payload) {
+            if (Array.isArray(payload)) return payload;
+            if (Array.isArray(payload?.data)) return payload.data;
+            return [];
+        }
+
+        function buildDefaultMcpUsage(sharedUsed = 0, sharedTotal = 0, toolMap = {}) {
+            const percent = sharedTotal > 0 ? clampPercent((sharedUsed / sharedTotal) * 100) : 0;
+            const result = {
+                shared: {
+                    used: safeNumber(sharedUsed),
+                    total: safeNumber(sharedTotal),
+                    percent,
+                    reset: null
+                }
+            };
+
+            getActiveMcpTools().forEach(tool => {
+                result[tool.id] = {
+                    used: safeNumber(toolMap[tool.id], 0),
+                    total: safeNumber(sharedTotal)
+                };
+            });
+
+            return result;
+        }
+
+        function buildUnavailableQuota(platformName, note = '平台未公开该类额度接口') {
+            return {
+                plan: {
+                    type: 'metered',
+                    expiry: null,
+                    cycleUsed: 0,
+                    cycleTotal: 0,
+                    cyclePercent: 0,
+                    cycleReset: null,
+                    unavailable: true,
+                    note: `${platformName}: ${note}`
+                },
+                weekly: {
+                    used: 0,
+                    total: 0,
+                    percent: 0,
+                    reset: null,
+                    estimated: true,
+                    unavailable: true,
+                    note
+                }
+            };
+        }
+
+        async function fetchGlmData(apiKey) {
+            const platform = getPlatformConfig('glm');
             const queryWindow = getLast24HourWindow();
             const requestNonce = Date.now();
             let lastError = null;
 
-            for (const baseUrl of CONFIG.baseUrls) {
+            for (const baseUrl of platform.baseUrls) {
                 try {
-                    const modelUsageUrl = buildUrlWithQuery(baseUrl, CONFIG.apiEndpoints.modelUsage, {
+                    const modelUsageUrl = buildUrlWithQuery(baseUrl, platform.apiEndpoints.modelUsage, {
                         ...queryWindow,
                         _ts: requestNonce
                     });
-                    const toolUsageUrl = buildUrlWithQuery(baseUrl, CONFIG.apiEndpoints.toolUsage, {
+                    const toolUsageUrl = buildUrlWithQuery(baseUrl, platform.apiEndpoints.toolUsage, {
                         ...queryWindow,
                         _ts: requestNonce
                     });
-                    const quotaLimitUrl = buildUrlWithQuery(baseUrl, CONFIG.apiEndpoints.quotaLimit, {
+                    const quotaLimitUrl = buildUrlWithQuery(baseUrl, platform.apiEndpoints.quotaLimit, {
                         _ts: requestNonce
                     });
 
+                    const authCandidates = buildBearerCandidates(apiKey, { 'Content-Type': 'application/json' });
                     const [modelUsage, toolUsage, quotaLimit] = await Promise.all([
-                        fetchWithAuth(modelUsageUrl, apiKey),
-                        fetchWithAuth(toolUsageUrl, apiKey),
-                        fetchWithAuth(quotaLimitUrl, apiKey)
+                        requestWithHeaderFallback(modelUsageUrl, authCandidates),
+                        requestWithHeaderFallback(toolUsageUrl, authCandidates),
+                        requestWithHeaderFallback(quotaLimitUrl, authCandidates)
                     ]);
 
                     return {
+                        platform: 'glm',
                         baseUrl,
                         queryWindow,
                         modelUsage,
@@ -1063,24 +1340,130 @@
                 }
             }
 
-            throw lastError || new Error('所有可用 API 域名均请求失败');
+            throw lastError || new Error('GLM 所有可用 API 域名均请求失败');
+        }
+
+        async function fetchOpenAiData(apiKey) {
+            const platform = getPlatformConfig('openai');
+            const window24h = getLast24HourUnixWindow();
+            const usageUrl = buildUrlWithQuery(platform.baseUrl, '/organization/usage/completions', {
+                start_time: window24h.start,
+                end_time: window24h.end,
+                bucket_width: '1h',
+                limit: 24
+            });
+            const costUrl = buildUrlWithQuery(platform.baseUrl, '/organization/costs', {
+                start_time: window24h.start,
+                end_time: window24h.end,
+                bucket_width: '1d',
+                limit: 1
+            });
+
+            const authCandidates = buildBearerCandidates(apiKey, { 'Content-Type': 'application/json' });
+            const [usage, cost] = await Promise.all([
+                requestWithHeaderFallback(usageUrl, authCandidates),
+                requestWithHeaderFallback(costUrl, authCandidates)
+            ]);
+
+            return {
+                platform: 'openai',
+                baseUrl: platform.baseUrl,
+                queryWindow: window24h,
+                usage,
+                cost
+            };
+        }
+
+        async function fetchAnthropicData(apiKey) {
+            const platform = getPlatformConfig('anthropic');
+            const window24h = getLast24HourUnixWindow();
+            const startIso = formatIsoByUnix(window24h.start);
+            const endIso = formatIsoByUnix(window24h.end);
+
+            const usageUrl = buildUrlWithQuery(platform.baseUrl, '/organizations/usage_report/messages', {
+                starting_at: startIso,
+                ending_at: endIso,
+                bucket_width: '1h',
+                limit: 24
+            });
+            const costUrl = buildUrlWithQuery(platform.baseUrl, '/organizations/cost_report', {
+                starting_at: startIso,
+                ending_at: endIso,
+                bucket_width: '1d',
+                limit: 1
+            });
+
+            const key = String(apiKey || '').trim();
+            const headers = {
+                'x-api-key': key.startsWith('Bearer ') ? key.slice(7) : key,
+                'anthropic-version': '2023-06-01',
+                'anthropic-beta': 'usage-cost-api-2025-08-18',
+                'Content-Type': 'application/json'
+            };
+            const [usage, cost] = await Promise.all([
+                requestJson(usageUrl, { headers }),
+                requestJson(costUrl, { headers })
+            ]);
+
+            return {
+                platform: 'anthropic',
+                baseUrl: platform.baseUrl,
+                queryWindow: window24h,
+                usage,
+                cost
+            };
+        }
+
+        async function fetchDeepSeekData(apiKey) {
+            const platform = getPlatformConfig('deepseek');
+            const balanceUrl = buildUrlWithQuery(platform.baseUrl, '/user/balance', {
+                _ts: Date.now()
+            });
+            const authCandidates = buildBearerCandidates(apiKey, { 'Content-Type': 'application/json' });
+            const balance = await requestWithHeaderFallback(balanceUrl, authCandidates);
+
+            return {
+                platform: 'deepseek',
+                baseUrl: platform.baseUrl,
+                queryWindow: getLast24HourUnixWindow(),
+                balance
+            };
+        }
+
+        async function fetchAllData(apiKey) {
+            showLoading(true);
+            hideError();
+
+            switch (state.platformId) {
+                case 'glm':
+                    return fetchGlmData(apiKey);
+                case 'openai':
+                    return fetchOpenAiData(apiKey);
+                case 'anthropic':
+                    return fetchAnthropicData(apiKey);
+                case 'deepseek':
+                    return fetchDeepSeekData(apiKey);
+                default:
+                    throw new Error(`暂不支持的平台: ${state.platformId}`);
+            }
         }
 
         async function refreshData() {
             if (state.apiKeys.length === 0) {
-                showError('请先输入 API Key');
+                showError(`请先输入 ${getPlatformConfig().name} API Key`);
                 return;
             }
 
             const targetIndex = state.currentKeyIndex;
             const apiKey = state.apiKeys[targetIndex];
             const activeRequestId = ++state.requestId;
+            const platform = getPlatformConfig();
 
             const btn = document.getElementById('refreshBtn');
             const icon = document.getElementById('refreshIcon');
             btn.disabled = true;
             icon.classList.add('loading-spinner');
-            updateKeyStatus(`正在查询账户 ${targetIndex + 1}（${maskApiKey(apiKey)}）...`);
+            updateKeyStatus(`正在查询 ${platform.name} 账户 ${targetIndex + 1}（${maskApiKey(apiKey)}）...`);
 
             try {
                 const data = await fetchAllData(apiKey);
@@ -1101,7 +1484,7 @@
 
                 document.getElementById('dashboardContent').classList.remove('hidden');
                 hideError();
-                updateKeyStatus(`当前查看: 账户 ${targetIndex + 1}（${maskApiKey(apiKey)}）`);
+                updateKeyStatus(`当前查看: ${platform.name} 账户 ${targetIndex + 1}（${maskApiKey(apiKey)}）`);
             } catch (error) {
                 if (activeRequestId !== state.requestId) {
                     return;
@@ -1110,7 +1493,7 @@
                 const hint = /HTTP 403|Failed to fetch|NetworkError/i.test(error.message)
                     ? '。可尝试在“设置”中切换 CORS 代理，或用 Live Server 并选择“不使用代理”。'
                     : '';
-                showError(`获取数据失败: ${error.message}${hint}`);
+                showError(`获取 ${platform.name} 数据失败: ${error.message}${hint}`);
             } finally {
                 if (activeRequestId === state.requestId) {
                     btn.disabled = false;
@@ -1121,7 +1504,22 @@
             }
         }
 
-        function parseApiData(rawData) {
+        function parseApiData(rawData, platformId = state.platformId) {
+            switch (platformId) {
+                case 'glm':
+                    return parseGlmApiData(rawData);
+                case 'openai':
+                    return parseOpenAiData(rawData);
+                case 'anthropic':
+                    return parseAnthropicData(rawData);
+                case 'deepseek':
+                    return parseDeepSeekData(rawData);
+                default:
+                    throw new Error(`没有可用的解析器: ${platformId}`);
+            }
+        }
+
+        function parseGlmApiData(rawData) {
             const modelUsage = normalizeApiData(rawData.modelUsage);
             const toolUsage = normalizeApiData(rawData.toolUsage);
             const quotaLimit = normalizeApiData(rawData.quotaLimit);
@@ -1248,6 +1646,237 @@
                     labels: trendLabels,
                     tokens: trendTokens,
                     calls: trendCalls
+                },
+                meta: {
+                    platform: 'glm',
+                    supports: getPlatformConfig('glm').supports
+                }
+            };
+        }
+
+        function parseOpenAiData(rawData) {
+            const usageBuckets = extractArray(rawData.usage);
+            const costBuckets = extractArray(rawData.cost);
+            const modelUsedMap = {};
+            const trendLabels = [];
+            const trendTokens = [];
+            const trendCalls = [];
+            let totalTokens24h = 0;
+            let totalCalls24h = 0;
+
+            usageBuckets
+                .slice()
+                .sort((a, b) => safeNumber(a?.start_time) - safeNumber(b?.start_time))
+                .forEach(bucket => {
+                    const results = Array.isArray(bucket?.results) ? bucket.results : [];
+                    let bucketTokens = 0;
+                    let bucketCalls = 0;
+                    results.forEach(item => {
+                        const tokenCount =
+                            safeNumber(item?.input_tokens) +
+                            safeNumber(item?.output_tokens) +
+                            safeNumber(item?.input_cached_tokens) +
+                            safeNumber(item?.input_audio_tokens) +
+                            safeNumber(item?.output_audio_tokens);
+                        const callCount = safeNumber(item?.num_model_requests);
+                        const modelName = item?.model || 'all-models';
+                        modelUsedMap[modelName] = safeNumber(modelUsedMap[modelName]) + tokenCount;
+                        bucketTokens += tokenCount;
+                        bucketCalls += callCount;
+                    });
+
+                    trendLabels.push(formatTrendLabelFromUnix(bucket?.start_time));
+                    trendTokens.push(bucketTokens);
+                    trendCalls.push(bucketCalls);
+                    totalTokens24h += bucketTokens;
+                    totalCalls24h += bucketCalls;
+                });
+
+            const costResult = costBuckets[0]?.results || [];
+            const totalCost = costResult.reduce((sum, item) => {
+                return sum + safeNumber(item?.amount?.value);
+            }, 0);
+            const currency = costResult[0]?.amount?.currency || 'USD';
+            const modelBalances = Object.entries(modelUsedMap).reduce((acc, [model, used]) => {
+                acc[model] = { used, total: 0, remaining: 0, usageOnly: true };
+                return acc;
+            }, {});
+
+            const unavailable = buildUnavailableQuota('OpenAI');
+            return {
+                user: {
+                    tokens24h: totalTokens24h,
+                    calls24h: totalCalls24h,
+                    cyclePercent: 0,
+                    source: rawData.baseUrl || '--'
+                },
+                plan: unavailable.plan,
+                weekly: unavailable.weekly,
+                modelBalances,
+                modelSummary: {
+                    totalCalls24h,
+                    totalTokens24h,
+                    latestCalls: trendCalls.length ? trendCalls[trendCalls.length - 1] : 0,
+                    latestTokens: trendTokens.length ? trendTokens[trendTokens.length - 1] : 0
+                },
+                mcpUsage: buildDefaultMcpUsage(0, 0),
+                trend: {
+                    labels: trendLabels,
+                    tokens: trendTokens,
+                    calls: trendCalls
+                },
+                meta: {
+                    platform: 'openai',
+                    cost24h: totalCost,
+                    currency,
+                    supports: getPlatformConfig('openai').supports,
+                    notes: ['需组织管理员 API Key 才能访问 Organization Usage/Cost 接口']
+                }
+            };
+        }
+
+        function parseAnthropicData(rawData) {
+            const usageBuckets = extractArray(rawData.usage);
+            const costBuckets = extractArray(rawData.cost);
+            const modelUsedMap = {};
+            const trendLabels = [];
+            const trendTokens = [];
+            const trendCalls = [];
+            let totalTokens24h = 0;
+            let webSearchCount = 0;
+            let codeExecCount = 0;
+            let webFetchCount = 0;
+
+            usageBuckets
+                .slice()
+                .sort((a, b) => safeNumber(toTimestamp(a?.starting_at)) - safeNumber(toTimestamp(b?.starting_at)))
+                .forEach(bucket => {
+                    const results = Array.isArray(bucket?.results) ? bucket.results : [];
+                    let bucketTokens = 0;
+                    results.forEach(item => {
+                        const tokenCount =
+                            safeNumber(item?.uncached_input_tokens) +
+                            safeNumber(item?.cache_read_input_tokens) +
+                            safeNumber(item?.cache_creation_input_tokens) +
+                            safeNumber(item?.output_tokens);
+                        const modelName = item?.model || 'claude-all';
+                        modelUsedMap[modelName] = safeNumber(modelUsedMap[modelName]) + tokenCount;
+                        bucketTokens += tokenCount;
+
+                        const toolUse = item?.server_tool_use || {};
+                        webSearchCount += safeNumber(toolUse.web_search_requests);
+                        codeExecCount += safeNumber(toolUse.code_execution_tool_result_blocks);
+                        webFetchCount += safeNumber(toolUse.web_fetch_tool_result_blocks);
+                    });
+
+                    trendLabels.push(new Date(bucket?.starting_at || Date.now()).toLocaleString('zh-CN', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }));
+                    trendTokens.push(bucketTokens);
+                    trendCalls.push(0);
+                    totalTokens24h += bucketTokens;
+                });
+
+            const costResult = costBuckets[0]?.results || [];
+            const totalCostMinor = costResult.reduce((sum, item) => {
+                return sum + safeNumber(item?.amount);
+            }, 0);
+            const currency = costResult[0]?.currency || 'usd';
+            const totalCostApprox = totalCostMinor / 100;
+
+            const modelBalances = Object.entries(modelUsedMap).reduce((acc, [model, used]) => {
+                acc[model] = { used, total: 0, remaining: 0, usageOnly: true };
+                return acc;
+            }, {});
+
+            const sharedMcpUsed = webSearchCount + codeExecCount + webFetchCount;
+            const unavailable = buildUnavailableQuota('Anthropic');
+            return {
+                user: {
+                    tokens24h: totalTokens24h,
+                    calls24h: 0,
+                    cyclePercent: 0,
+                    source: rawData.baseUrl || '--'
+                },
+                plan: unavailable.plan,
+                weekly: unavailable.weekly,
+                modelBalances,
+                modelSummary: {
+                    totalCalls24h: 0,
+                    totalTokens24h,
+                    latestCalls: 0,
+                    latestTokens: trendTokens.length ? trendTokens[trendTokens.length - 1] : 0
+                },
+                mcpUsage: buildDefaultMcpUsage(sharedMcpUsed, 0, {
+                    web_search: webSearchCount,
+                    code_execution: codeExecCount,
+                    web_fetch: webFetchCount
+                }),
+                trend: {
+                    labels: trendLabels,
+                    tokens: trendTokens,
+                    calls: trendCalls
+                },
+                meta: {
+                    platform: 'anthropic',
+                    cost24h: totalCostApprox,
+                    currency,
+                    supports: getPlatformConfig('anthropic').supports,
+                    notes: ['Anthropic cost_report 返回金额为最小货币单位（minor units），此处已按 /100 近似换算']
+                }
+            };
+        }
+
+        function parseDeepSeekData(rawData) {
+            const balance = normalizeApiData(rawData.balance);
+            const infos = Array.isArray(balance?.balance_infos) ? balance.balance_infos : [];
+            const totalBalance = infos.reduce((sum, item) => sum + safeNumber(item?.total_balance), 0);
+            const grantedBalance = infos.reduce((sum, item) => sum + safeNumber(item?.granted_balance), 0);
+            const toppedUpBalance = infos.reduce((sum, item) => sum + safeNumber(item?.topped_up_balance), 0);
+            const currency = infos[0]?.currency || 'CNY';
+
+            const unavailable = buildUnavailableQuota('DeepSeek', '当前官方公开余额接口，不含详细分时用量');
+            return {
+                user: {
+                    tokens24h: 0,
+                    calls24h: 0,
+                    cyclePercent: 0,
+                    source: rawData.baseUrl || '--'
+                },
+                plan: unavailable.plan,
+                weekly: unavailable.weekly,
+                modelBalances: {
+                    balance_total: {
+                        used: 0,
+                        total: totalBalance,
+                        remaining: totalBalance
+                    }
+                },
+                modelSummary: {
+                    totalCalls24h: 0,
+                    totalTokens24h: 0,
+                    latestCalls: 0,
+                    latestTokens: 0
+                },
+                mcpUsage: buildDefaultMcpUsage(0, 0),
+                trend: {
+                    labels: [],
+                    tokens: [],
+                    calls: []
+                },
+                meta: {
+                    platform: 'deepseek',
+                    currency,
+                    balance: {
+                        total: totalBalance,
+                        granted: grantedBalance,
+                        toppedUp: toppedUpBalance
+                    },
+                    supports: getPlatformConfig('deepseek').supports,
+                    notes: ['DeepSeek 当前公开接口以余额查询为主']
                 }
             };
         }
@@ -1260,9 +1889,12 @@
             // Update account selector
             if (state.apiKeys.length > 1) {
                 updateAccountSelector();
+            } else {
+                document.getElementById('accountSelector').classList.add('hidden');
             }
 
             // Update plan info
+            updatePlatformMetaCard(data);
             updatePlanInfo(data.plan);
 
             // Update cycle info
@@ -1288,12 +1920,59 @@
             updateVisualCharts(data);
         }
 
+        function updatePlatformMetaCard(data) {
+            const card = document.getElementById('platformMetaCard');
+            const body = document.getElementById('platformMetaBody');
+            if (!card || !body || !data) return;
+
+            const meta = data.meta || {};
+            const platform = getPlatformConfig();
+            const supports = meta.supports || platform.supports || {};
+            const costValue = safeNumber(meta.cost24h);
+            const costText = costValue > 0
+                ? `${costValue.toFixed(4)} ${String(meta.currency || '').toUpperCase()}`
+                : '--';
+            const notes = Array.isArray(meta.notes) ? meta.notes : [];
+
+            const supportEntries = [
+                `周期额度: ${supports.cycleQuota ? '支持' : '不支持 / 未公开'}`,
+                `每周额度: ${supports.weeklyQuota ? '支持' : '不支持 / 未公开'}`,
+                `工具维度: ${supports.mcp ? '支持' : '不支持 / 未公开'}`
+            ];
+
+            body.innerHTML = `
+                <div class="p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                    <div class="font-medium mb-1">当前平台</div>
+                    <div style="color: var(--text-secondary)">${platform.name}</div>
+                </div>
+                <div class="p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                    <div class="font-medium mb-1">数据源</div>
+                    <div style="color: var(--text-secondary)">${data.user?.source || '--'}</div>
+                </div>
+                <div class="p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                    <div class="font-medium mb-1">24h 成本</div>
+                    <div style="color: var(--text-secondary)">${costText}</div>
+                </div>
+                <div class="p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
+                    <div class="font-medium mb-1">接口覆盖</div>
+                    <div style="color: var(--text-secondary)">${supportEntries.join(' · ')}</div>
+                </div>
+                ${notes.length > 0 ? `
+                <div class="md:col-span-2 p-3 rounded-lg text-xs" style="background-color: var(--bg-tertiary); color: var(--text-secondary)">
+                    说明: ${notes.join('；')}
+                </div>
+                ` : ''}
+            `;
+            card.classList.remove('hidden');
+        }
+
         function updateAccountSelector() {
             const container = document.getElementById('accountSelector');
             const tabs = document.getElementById('accountTabs');
             const hint = document.getElementById('accountTrackingHint');
             const currentKey = state.apiKeys[state.currentKeyIndex];
             const tracking = getKeyTracking(currentKey);
+            const platformName = getPlatformConfig().name;
 
             container.classList.remove('hidden');
             tabs.innerHTML = state.apiKeys.map((key, index) => `
@@ -1306,9 +1985,9 @@
             `).join('');
 
             if (tracking?.delta) {
-                hint.textContent = `本地追踪（估算）: ΔTokens ${formatNumber(tracking.delta.tokens)} · Δ调用 ${formatNumber(tracking.delta.calls)} · ΔMCP ${formatNumber(tracking.delta.mcp)}。同一主账号下切换 Key 会显示同一官方总量，Δ仅用于分 Key 近似观察。`;
+                hint.textContent = `本地追踪（估算）: ΔTokens ${formatNumber(tracking.delta.tokens)} · Δ调用 ${formatNumber(tracking.delta.calls)} · ΔMCP ${formatNumber(tracking.delta.mcp)}。${platformName} 若按主账号汇总，切换 Key 可能显示同一官方总量。`;
             } else {
-                hint.textContent = '本地追踪（估算）: 首次加载后将记录该 Key 增量。若多个 Key 属于同一主账号，官方总量会相同。';
+                hint.textContent = `本地追踪（估算）: 首次加载后将记录该 Key 增量。${platformName} 如按主账号结算，多 Key 官方总量可能一致。`;
             }
         }
 
@@ -1329,7 +2008,7 @@
             };
             saveKeyTracking();
             updateUI();
-            updateKeyStatus(`已重置账户 ${state.currentKeyIndex + 1}（${maskApiKey(key)}）追踪基线`);
+            updateKeyStatus(`已重置 ${getPlatformConfig().name} 账户 ${state.currentKeyIndex + 1}（${maskApiKey(key)}）追踪基线`);
         }
 
         function switchAccount(index) {
@@ -1338,7 +2017,7 @@
             if (cachedData) {
                 state.data = cachedData;
                 updateUI();
-                updateKeyStatus(`当前查看: 账户 ${index + 1}（${maskApiKey(state.apiKeys[index])}）`);
+                updateKeyStatus(`当前查看: ${getPlatformConfig().name} 账户 ${index + 1}（${maskApiKey(state.apiKeys[index])}）`);
             }
             refreshData();
         }
@@ -1346,11 +2025,15 @@
         function updatePlanInfo(plan) {
             const badge = document.getElementById('planBadge');
             const expiry = document.getElementById('planExpiry');
+            const availableTypes = ['lite', 'pro', 'max', 'metered'];
+            const planType = availableTypes.includes(plan.type) ? plan.type : 'pro';
 
-            badge.className = `badge badge-${plan.type}`;
-            badge.textContent = plan.type.toUpperCase();
+            badge.className = `badge badge-${planType}`;
+            badge.textContent = planType === 'metered' ? 'METERED' : planType.toUpperCase();
 
-            if (plan.expiry) {
+            if (plan.unavailable) {
+                expiry.textContent = plan.note || '该平台未公开套餐周期额度';
+            } else if (plan.expiry) {
                 const expiryDate = new Date(plan.expiry);
                 expiry.textContent = `有效期至 ${formatDate(expiryDate)}`;
             } else {
@@ -1359,6 +2042,16 @@
         }
 
         function updateCycleInfo(plan) {
+            if (plan.unavailable) {
+                document.getElementById('cycleUsed').textContent = '--';
+                document.getElementById('cycleTotal').textContent = '--';
+                const progress = document.getElementById('cycleProgress');
+                progress.style.width = '0%';
+                progress.style.backgroundColor = 'var(--border-color)';
+                document.getElementById('cycleReset').textContent = plan.note || '平台未提供';
+                return;
+            }
+
             document.getElementById('cycleUsed').textContent = plan.cycleUsed;
             document.getElementById('cycleTotal').textContent = plan.cycleTotal;
 
@@ -1381,6 +2074,15 @@
         }
 
         function updateWeeklyInfo(weekly) {
+            if (weekly.unavailable) {
+                document.getElementById('weeklyPercent').textContent = '--';
+                const progress = document.getElementById('weeklyProgress');
+                progress.style.width = '0%';
+                progress.style.backgroundColor = 'var(--border-color)';
+                document.getElementById('weeklyReset').textContent = weekly.note || '平台未提供';
+                return;
+            }
+
             document.getElementById('weeklyPercent').textContent = `${weekly.percent}%`;
 
             const progress = document.getElementById('weeklyProgress');
@@ -1409,8 +2111,20 @@
             const statusText = document.getElementById('statusText');
             const balance = document.getElementById('accountBalance');
             const calls = document.getElementById('accountCalls');
-            balance.textContent = `${formatNumber(user.tokens24h || 0)} tokens`;
-            calls.textContent = `${formatNumber(user.calls24h || 0)}`;
+            const meta = state.data?.meta || {};
+            if (meta?.balance && Number.isFinite(Number(meta.balance.total))) {
+                balance.textContent = `${Number(meta.balance.total).toFixed(2)} ${meta.currency || ''}`;
+                calls.textContent = '余额接口';
+            } else {
+                balance.textContent = `${formatNumber(user.tokens24h || 0)} tokens`;
+                calls.textContent = `${formatNumber(user.calls24h || 0)}`;
+            }
+
+            if (state.data?.plan?.unavailable) {
+                statusDot.className = 'status-dot status-success';
+                statusText.textContent = '平台未提供周期额度，已展示可查询指标';
+                return;
+            }
 
             if ((user.cyclePercent || 0) >= 90) {
                 statusDot.className = 'status-dot status-danger';
@@ -1426,8 +2140,9 @@
 
         function updateModelBalances(balances) {
             const container = document.getElementById('modelBalances');
+            const entries = Object.entries(balances || {});
 
-            if (Object.keys(balances).length === 0) {
+            if (entries.length === 0) {
                 const summary = state.data?.modelSummary || {};
                 container.innerHTML = `
                     <div class="p-3 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-secondary)">
@@ -1451,9 +2166,41 @@
                 return;
             }
 
-            container.innerHTML = Object.entries(balances).map(([model, data]) => {
-                const modelInfo = CONFIG.models.find(m => m.id === model) || { name: model, color: '#6b7280' };
-                const remaining = data.remaining || (data.total - data.used);
+            const hasUsageOnly = entries.some(([, value]) => value?.usageOnly || safeNumber(value?.total) <= 0);
+            if (hasUsageOnly) {
+                const maxUsed = Math.max(...entries.map(([, value]) => safeNumber(value?.used, 0)), 1);
+                container.innerHTML = `
+                    <div class="p-3 rounded-lg text-sm mb-3" style="background-color: var(--bg-tertiary); color: var(--text-secondary)">
+                        当前平台返回的是模型用量统计（Usage），未返回模型总额度上限（Quota）。
+                    </div>
+                    ${entries.map(([model, data]) => {
+                        const modelInfo = getActiveModels().find(m => m.id === model) || { name: model, color: '#6b7280' };
+                        const used = safeNumber(data?.used, 0);
+                        const ratio = Math.max(6, Math.round((used / maxUsed) * 100));
+                        return `
+                            <div class="mb-3">
+                                <div class="flex items-center justify-between mb-1">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-3 h-3 rounded-full" style="background-color: ${modelInfo.color}"></div>
+                                        <span class="font-medium">${modelInfo.name}</span>
+                                    </div>
+                                    <span class="text-sm">24h 用量: ${formatNumber(used)} tokens</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="background-color: ${modelInfo.color}; width: ${ratio}%"></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                `;
+                return;
+            }
+
+            container.innerHTML = entries.map(([model, data]) => {
+                const modelInfo = getActiveModels().find(m => m.id === model) || { name: model, color: '#6b7280' };
+                const remaining = Number.isFinite(Number(data.remaining))
+                    ? Number(data.remaining)
+                    : (Number(data.total || 0) - Number(data.used || 0));
                 const percent = data.total > 0 ? (remaining / data.total) * 100 : 100;
 
                 return `
@@ -1475,6 +2222,15 @@
 
         function updateMcpTools(mcpUsage) {
             const container = document.getElementById('mcpTools');
+            if (state.data?.meta?.supports?.mcp === false) {
+                container.innerHTML = `
+                    <div class="p-3 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-secondary)">
+                        当前平台未公开 MCP / 工具调用维度接口。
+                    </div>
+                `;
+                return;
+            }
+
             const shared = mcpUsage?.shared || { used: 0, total: 0, percent: 0, reset: null };
             const sharedRemaining = Math.max((shared.total || 0) - (shared.used || 0), 0);
 
@@ -1490,10 +2246,11 @@
                 </div>
             `;
 
-            const toolBlocks = CONFIG.mcpTools.map(tool => {
+            const toolBlocks = getActiveMcpTools().map(tool => {
                 const usage = mcpUsage[tool.id] || { used: 0, total: shared.total || 0 };
-                const percent = Number(shared.total || 0) > 0
-                    ? Math.round((Number(usage.used || 0) / Number(shared.total)) * 100)
+                const percentBase = Number(shared.total || usage.total || 0);
+                const percent = percentBase > 0
+                    ? Math.round((Number(usage.used || 0) / percentBase) * 100)
                     : 0;
                 return `
                     <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: var(--bg-tertiary)">
@@ -1518,42 +2275,81 @@
             const tbody = document.getElementById('usageTableBody');
             const rows = [];
 
-            // Cycle row
-            rows.push({
-                name: '5小时周期',
-                used: data.plan.cycleUsed,
-                total: data.plan.cycleTotal,
-                remaining: data.plan.cycleTotal - data.plan.cycleUsed
-            });
+            if (!data.plan?.unavailable) {
+                rows.push({
+                    name: '5小时周期',
+                    used: data.plan.cycleUsed,
+                    total: data.plan.cycleTotal,
+                    remaining: data.plan.cycleTotal - data.plan.cycleUsed
+                });
+            }
 
-            // Weekly row
-            rows.push({
-                name: '每周额度',
-                used: data.weekly.used,
-                total: data.weekly.total,
-                remaining: data.weekly.total - data.weekly.used
-            });
+            if (!data.weekly?.unavailable) {
+                rows.push({
+                    name: '每周额度',
+                    used: data.weekly.used,
+                    total: data.weekly.total,
+                    remaining: data.weekly.total - data.weekly.used
+                });
+            }
 
-            // MCP shared quota row
-            rows.push({
-                name: 'MCP 共享额度',
-                used: data.mcpUsage?.shared?.used || 0,
-                total: data.mcpUsage?.shared?.total || 0,
-                remaining: Math.max((data.mcpUsage?.shared?.total || 0) - (data.mcpUsage?.shared?.used || 0), 0)
-            });
+            if (data.meta?.supports?.mcp !== false) {
+                rows.push({
+                    name: 'MCP 共享额度',
+                    used: data.mcpUsage?.shared?.used || 0,
+                    total: data.mcpUsage?.shared?.total || 0,
+                    remaining: Math.max((data.mcpUsage?.shared?.total || 0) - (data.mcpUsage?.shared?.used || 0), 0)
+                });
+            }
 
-            // Model rows
             Object.entries(data.modelBalances).forEach(([model, balance]) => {
-                const modelInfo = CONFIG.models.find(m => m.id === model) || { name: model };
+                const modelInfo = getActiveModels().find(m => m.id === model) || { name: model };
+                const usageOnly = Boolean(balance.usageOnly) || safeNumber(balance.total) <= 0;
                 rows.push({
                     name: modelInfo.name,
                     used: balance.used,
-                    total: balance.total,
-                    remaining: balance.remaining || balance.total - balance.used
+                    total: usageOnly ? null : balance.total,
+                    remaining: usageOnly ? null : (balance.remaining || balance.total - balance.used),
+                    usageOnly
                 });
             });
 
+            if (safeNumber(data.meta?.cost24h) > 0) {
+                rows.push({
+                    name: `24h 成本 (${String(data.meta.currency || '').toUpperCase()})`,
+                    used: Number(data.meta.cost24h).toFixed(4),
+                    total: null,
+                    remaining: null,
+                    usageOnly: true
+                });
+            }
+
+            if (rows.length === 0) {
+                rows.push({
+                    name: '24h Tokens',
+                    used: data.modelSummary?.totalTokens24h || 0,
+                    total: null,
+                    remaining: null,
+                    usageOnly: true
+                });
+            }
+
             tbody.innerHTML = rows.map(row => {
+                if (row.usageOnly) {
+                    return `
+                        <tr style="border-bottom: 1px solid var(--border-color)">
+                            <td class="py-3 px-4">${row.name}</td>
+                            <td class="py-3 px-4 text-right">${typeof row.used === 'string' ? row.used : formatNumber(row.used)}</td>
+                            <td class="py-3 px-4 text-right">--</td>
+                            <td class="py-3 px-4 text-right">--</td>
+                            <td class="py-3 px-4">
+                                <span class="status-dot status-warning"></span>
+                                <span class="text-sm">统计值</span>
+                            </td>
+                        </tr>
+                    `;
+                }
+
                 const percent = row.total > 0 ? (row.remaining / row.total) * 100 : 100;
                 let status = 'success';
                 if (percent < 20) status = 'danger';
@@ -1697,6 +2493,7 @@
 
         function initVisualCharts() {
             const colors = getChartTheme();
+            const mcpTools = getActiveMcpTools();
 
             const quotaCtx = document.getElementById('quotaRingChart').getContext('2d');
             state.quotaChart = new Chart(quotaCtx, {
@@ -1738,10 +2535,10 @@
             state.mcpChart = new Chart(mcpCtx, {
                 type: 'bar',
                 data: {
-                    labels: CONFIG.mcpTools.map(tool => tool.name),
+                    labels: mcpTools.map(tool => tool.name),
                     datasets: [{
                         label: '调用次数',
-                        data: [0, 0, 0],
+                        data: mcpTools.map(() => 0),
                         borderRadius: 10,
                         backgroundColor: ['#d4a24c', '#d97757', '#788c5d']
                     }]
@@ -1806,7 +2603,11 @@
             }
 
             if (document.getElementById('saveHistory').checked) {
-                const history = JSON.parse(localStorage.getItem('glm_history') || '[]');
+                const history = JSON.parse(
+                    localStorage.getItem(getHistoryStorageKey()) ||
+                    (state.platformId === 'glm' ? localStorage.getItem('glm_history') : null) ||
+                    '[]'
+                );
                 const now = Date.now();
                 const dayAgo = now - 24 * 60 * 60 * 1000;
                 const recentHistory = history
@@ -1817,8 +2618,8 @@
                     state.chart.data.labels = recentHistory.map(h =>
                         new Date(h.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
                     );
-                    state.chart.data.datasets[0].data = recentHistory.map(h => h.cycleUsed || 0);
-                    state.chart.data.datasets[1].data = recentHistory.map(() => 0);
+                    state.chart.data.datasets[0].data = recentHistory.map(h => h.tokens24h || h.cycleUsed || 0);
+                    state.chart.data.datasets[1].data = recentHistory.map(h => h.calls24h || 0);
                     state.chart.update();
                     return;
                 }
@@ -1833,11 +2634,11 @@
         function updateVisualCharts(data) {
             if (!data) return;
 
-            const cyclePercent = Number(data.plan?.cyclePercent || 0);
-            const weeklyPercent = Number(data.weekly?.percent || 0);
+            const cyclePercent = data.plan?.unavailable ? 0 : Number(data.plan?.cyclePercent || 0);
+            const weeklyPercent = data.weekly?.unavailable ? 0 : Number(data.weekly?.percent || 0);
 
-            document.getElementById('quotaCycleChip').textContent = `Cycle ${cyclePercent}%`;
-            document.getElementById('quotaWeeklyChip').textContent = `Week ${weeklyPercent}%`;
+            document.getElementById('quotaCycleChip').textContent = data.plan?.unavailable ? 'Cycle N/A' : `Cycle ${cyclePercent}%`;
+            document.getElementById('quotaWeeklyChip').textContent = data.weekly?.unavailable ? 'Week N/A' : `Week ${weeklyPercent}%`;
 
             if (state.quotaChart) {
                 state.quotaChart.data.datasets[0].data = [cyclePercent, Math.max(100 - cyclePercent, 0)];
@@ -1846,7 +2647,9 @@
             }
 
             if (state.mcpChart) {
-                state.mcpChart.data.datasets[0].data = CONFIG.mcpTools.map(tool =>
+                const tools = getActiveMcpTools();
+                state.mcpChart.data.labels = tools.map(tool => tool.name);
+                state.mcpChart.data.datasets[0].data = tools.map(tool =>
                     Number(data.mcpUsage?.[tool.id]?.used || 0)
                 );
                 state.mcpChart.update();
@@ -1927,15 +2730,17 @@
         function saveHistoryData(data) {
             if (!document.getElementById('saveHistory').checked) return;
 
-            const history = JSON.parse(localStorage.getItem('glm_history') || '[]');
+            const history = JSON.parse(localStorage.getItem(getHistoryStorageKey()) || '[]');
             history.push({
                 timestamp: Date.now(),
                 cycleUsed: data.plan?.cycleUsed || 0,
-                weeklyPercent: data.weekly?.percent || 0
+                weeklyPercent: data.weekly?.percent || 0,
+                tokens24h: data.modelSummary?.totalTokens24h || 0,
+                calls24h: data.modelSummary?.totalCalls24h || 0
             });
 
             // Keep only last 100 entries
-            localStorage.setItem('glm_history', JSON.stringify(history.slice(-100)));
+            localStorage.setItem(getHistoryStorageKey(), JSON.stringify(history.slice(-100)));
         }
 
         // ==================== Theme ====================
