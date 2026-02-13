@@ -7,37 +7,43 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
 
         :root {
-            --bg-primary: #f8fafc;
+            --bg-primary: #faf9f5;
             --bg-secondary: #ffffff;
-            --bg-tertiary: #f1f5f9;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --border-color: #e2e8f0;
-            --accent-color: #3b82f6;
-            --accent-hover: #2563eb;
+            --bg-tertiary: #f4f1e8;
+            --text-primary: #141413;
+            --text-secondary: #6f6b61;
+            --border-color: #e8e6dc;
+            --accent-color: #d4a24c;
+            --accent-hover: #c18e39;
             --success-color: #22c55e;
             --warning-color: #f59e0b;
             --danger-color: #ef4444;
-            --glow-primary: rgba(59, 130, 246, 0.16);
-            --glow-secondary: rgba(16, 185, 129, 0.14);
+            --claude-ink: #141413;
+            --claude-yellow: #d4a24c;
+            --claude-yellow-soft: #f3e5c7;
+            --glow-primary: rgba(212, 162, 76, 0.2);
+            --glow-secondary: rgba(217, 119, 87, 0.14);
         }
 
         [data-theme="dark"] {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --border-color: #475569;
-            --accent-color: #60a5fa;
-            --accent-hover: #3b82f6;
+            --bg-primary: #141413;
+            --bg-secondary: #1f1f1d;
+            --bg-tertiary: #2b2a27;
+            --text-primary: #faf9f5;
+            --text-secondary: #b0aea5;
+            --border-color: #3d3a35;
+            --accent-color: #e0b866;
+            --accent-hover: #d4a24c;
+            --claude-ink: #141413;
+            --claude-yellow: #e0b866;
+            --claude-yellow-soft: #3b3121;
         }
 
         body {
-            font-family: 'Outfit', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-family: 'Lora', 'PingFang SC', 'Microsoft YaHei', serif;
             background-color: var(--bg-primary);
             color: var(--text-primary);
             background-image:
@@ -49,9 +55,9 @@
 
         [data-theme="dark"] body {
             background-image:
-                radial-gradient(circle at 15% 10%, rgba(96, 165, 250, 0.15) 0%, transparent 42%),
-                radial-gradient(circle at 85% 20%, rgba(20, 184, 166, 0.12) 0%, transparent 38%),
-                linear-gradient(180deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0) 35%);
+                radial-gradient(circle at 15% 10%, rgba(224, 184, 102, 0.2) 0%, transparent 42%),
+                radial-gradient(circle at 85% 20%, rgba(217, 119, 87, 0.16) 0%, transparent 38%),
+                linear-gradient(180deg, rgba(20, 20, 19, 0.88) 0%, rgba(20, 20, 19, 0) 35%);
         }
 
         .dashboard-shell {
@@ -72,6 +78,10 @@
             );
             mix-blend-mode: multiply;
             opacity: 0.35;
+        }
+
+        h1, h2, h3, .btn, .badge {
+            font-family: 'Poppins', 'PingFang SC', 'Microsoft YaHei', sans-serif;
         }
 
         .card {
@@ -112,18 +122,19 @@
         .input-field:focus {
             outline: none;
             border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 0 3px rgba(212, 162, 76, 0.18);
         }
 
         .btn {
             background-color: var(--accent-color);
-            color: white;
+            color: var(--claude-ink);
             padding: 0.75rem 1.5rem;
             border-radius: 8px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
             border: none;
+            box-shadow: 0 8px 20px rgba(212, 162, 76, 0.22);
         }
 
         .btn:hover {
@@ -147,6 +158,26 @@
             background-color: var(--border-color);
         }
 
+        .account-tab {
+            padding: 0.35rem 0.8rem;
+            border-radius: 0.65rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+        }
+
+        .account-tab:hover {
+            border-color: rgba(212, 162, 76, 0.5);
+        }
+
+        .account-tab-active {
+            background: linear-gradient(135deg, var(--accent-color), #e2ba70);
+            color: var(--claude-ink);
+            border-color: transparent;
+            box-shadow: 0 6px 16px rgba(212, 162, 76, 0.28);
+        }
+
         .badge {
             display: inline-flex;
             align-items: center;
@@ -157,12 +188,12 @@
             text-transform: uppercase;
         }
 
-        .badge-lite { background-color: #dbeafe; color: #1d4ed8; }
-        .badge-pro { background-color: #dcfce7; color: #15803d; }
-        .badge-max { background-color: #fef3c7; color: #b45309; }
-        [data-theme="dark"] .badge-lite { background-color: #1e3a5f; color: #93c5fd; }
-        [data-theme="dark"] .badge-pro { background-color: #14532d; color: #86efac; }
-        [data-theme="dark"] .badge-max { background-color: #78350f; color: #fcd34d; }
+        .badge-lite { background-color: #e8e6dc; color: #4a463f; }
+        .badge-pro { background-color: #f3e5c7; color: #8f6a2e; }
+        .badge-max { background-color: #f4d9cf; color: #a24f38; }
+        [data-theme="dark"] .badge-lite { background-color: #3d3a35; color: #d1cec4; }
+        [data-theme="dark"] .badge-pro { background-color: #4b3d25; color: #f6cf7c; }
+        [data-theme="dark"] .badge-max { background-color: #57362d; color: #f0a58b; }
 
         .loading-spinner {
             animation: spin 1s linear infinite;
@@ -242,6 +273,30 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
+        .claude-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.22rem 0.7rem;
+            border-radius: 999px;
+            background-color: var(--claude-yellow-soft);
+            border: 1px solid rgba(212, 162, 76, 0.45);
+            color: var(--claude-ink);
+            font-size: 0.72rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.02em;
+        }
+
+        .claude-badge::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--claude-yellow);
+            box-shadow: 0 0 0 4px rgba(212, 162, 76, 0.2);
+        }
+
         .heatmap-grid {
             display: grid;
             grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -274,7 +329,7 @@
             flex: 1;
             height: 8px;
             border-radius: 999px;
-            background: linear-gradient(90deg, rgba(59,130,246,0.1), rgba(59,130,246,0.88));
+            background: linear-gradient(90deg, rgba(212,162,76,0.12), rgba(212,162,76,0.9));
         }
     </style>
 </head>
@@ -284,10 +339,11 @@
         <header class="flex justify-between items-center mb-8">
             <div>
                 <h1 class="text-2xl font-bold flex items-center gap-3">
-                    <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-8 h-8" style="color: var(--accent-color)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                     </svg>
                     GLM Coding Plan 仪表盘
+                    <span class="claude-badge">Claude Yellow</span>
                 </h1>
                 <p class="text-sm mt-1" style="color: var(--text-secondary)">实时监控您的 API 用量和额度</p>
             </div>
@@ -636,12 +692,12 @@
                 max: { cycleMax: 1000, weeklyMax: 50000 }
             },
             models: [
-                { id: 'glm-4-plus', name: 'GLM-4-Plus', color: '#3b82f6' },
-                { id: 'glm-4-0520', name: 'GLM-4-0520', color: '#8b5cf6' },
-                { id: 'glm-4-air', name: 'GLM-4-Air', color: '#06b6d4' },
-                { id: 'glm-4-airx', name: 'GLM-4-AirX', color: '#10b981' },
-                { id: 'glm-4-flash', name: 'GLM-4-Flash', color: '#f59e0b' },
-                { id: 'glm-4v', name: 'GLM-4V', color: '#ef4444' }
+                { id: 'glm-4-plus', name: 'GLM-4-Plus', color: '#d4a24c' },
+                { id: 'glm-4-0520', name: 'GLM-4-0520', color: '#d97757' },
+                { id: 'glm-4-air', name: 'GLM-4-Air', color: '#6a9bcc' },
+                { id: 'glm-4-airx', name: 'GLM-4-AirX', color: '#788c5d' },
+                { id: 'glm-4-flash', name: 'GLM-4-Flash', color: '#e39c3f' },
+                { id: 'glm-4v', name: 'GLM-4V', color: '#9f6c63' }
             ],
             mcpTools: [
                 { id: 'web_search', name: '联网搜索', icon: '🔍' },
@@ -1242,7 +1298,7 @@
             container.classList.remove('hidden');
             tabs.innerHTML = state.apiKeys.map((key, index) => `
                 <button
-                    class="px-3 py-1 rounded-lg text-sm font-medium transition-all ${index === state.currentKeyIndex ? 'bg-blue-500 text-white' : 'btn-secondary'}"
+                    class="${index === state.currentKeyIndex ? 'account-tab account-tab-active' : 'account-tab btn-secondary'}"
                     onclick="switchAccount(${index})"
                 >
                     账户 ${index + 1} · ${maskApiKey(key)}${state.keyTracking[key]?.delta?.tokens ? ` · Δ${formatNumber(state.keyTracking[key].delta.tokens)}` : ''}
@@ -1250,9 +1306,9 @@
             `).join('');
 
             if (tracking?.delta) {
-                hint.textContent = `本地追踪（估算）: ΔTokens ${formatNumber(tracking.delta.tokens)} · Δ调用 ${formatNumber(tracking.delta.calls)} · ΔMCP ${formatNumber(tracking.delta.mcp)}。`;
+                hint.textContent = `本地追踪（估算）: ΔTokens ${formatNumber(tracking.delta.tokens)} · Δ调用 ${formatNumber(tracking.delta.calls)} · ΔMCP ${formatNumber(tracking.delta.mcp)}。同一主账号下切换 Key 会显示同一官方总量，Δ仅用于分 Key 近似观察。`;
             } else {
-                hint.textContent = '本地追踪（估算）: 首次加载后将记录该 key 的增量。';
+                hint.textContent = '本地追踪（估算）: 首次加载后将记录该 Key 增量。若多个 Key 属于同一主账号，官方总量会相同。';
             }
         }
 
@@ -1522,11 +1578,11 @@
         function getChartTheme(themeName = document.documentElement.getAttribute('data-theme') || 'light') {
             const dark = themeName === 'dark';
             return {
-                textColor: dark ? '#94a3b8' : '#64748b',
-                gridColor: dark ? 'rgba(71, 85, 105, 0.45)' : 'rgba(148, 163, 184, 0.32)',
-                tokenColor: dark ? '#60a5fa' : '#2563eb',
-                callColor: dark ? '#34d399' : '#059669',
-                muted: dark ? 'rgba(148, 163, 184, 0.22)' : 'rgba(148, 163, 184, 0.2)'
+                textColor: dark ? '#b0aea5' : '#6f6b61',
+                gridColor: dark ? 'rgba(74, 69, 63, 0.5)' : 'rgba(176, 174, 165, 0.35)',
+                tokenColor: dark ? '#e0b866' : '#d4a24c',
+                callColor: dark ? '#8fa26f' : '#788c5d',
+                muted: dark ? 'rgba(176, 174, 165, 0.2)' : 'rgba(176, 174, 165, 0.2)'
             };
         }
 
@@ -1565,7 +1621,7 @@
                             label: '每小时 Token',
                             data: [],
                             borderColor: colors.tokenColor,
-                            backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                            backgroundColor: 'rgba(212, 162, 76, 0.18)',
                             fill: true,
                             tension: 0.35,
                             yAxisID: 'yTokens'
@@ -1574,7 +1630,7 @@
                             label: '每小时调用',
                             data: [],
                             borderColor: colors.callColor,
-                            backgroundColor: 'rgba(5, 150, 105, 0.12)',
+                            backgroundColor: 'rgba(120, 140, 93, 0.14)',
                             fill: false,
                             tension: 0.3,
                             yAxisID: 'yCalls'
@@ -1651,7 +1707,7 @@
                         {
                             label: '5小时',
                             data: [0, 100],
-                            backgroundColor: ['#10b981', colors.muted],
+                            backgroundColor: ['#d4a24c', colors.muted],
                             borderWidth: 0,
                             radius: '98%',
                             cutout: '70%'
@@ -1659,7 +1715,7 @@
                         {
                             label: '每周',
                             data: [0, 100],
-                            backgroundColor: ['#f59e0b', colors.muted],
+                            backgroundColor: ['#d97757', colors.muted],
                             borderWidth: 0,
                             radius: '66%',
                             cutout: '42%'
@@ -1687,7 +1743,7 @@
                         label: '调用次数',
                         data: [0, 0, 0],
                         borderRadius: 10,
-                        backgroundColor: ['#3b82f6', '#06b6d4', '#10b981']
+                        backgroundColor: ['#d4a24c', '#d97757', '#788c5d']
                     }]
                 },
                 options: {
@@ -1827,7 +1883,7 @@
                 const label = labels[index] || `slot-${index}`;
                 const call = Number(calls[index] || 0);
                 const title = `${label} | Tokens: ${formatNumber(value)} | Calls: ${formatNumber(call)}`;
-                return `<div class="heat-cell" style="background-color: rgba(37, 99, 235, ${alpha})" title="${title}"></div>`;
+                return `<div class="heat-cell" style="background-color: rgba(212, 162, 76, ${alpha})" title="${title}"></div>`;
             }).join('');
 
             peakLabel.textContent = formatNumber(peakToken);
@@ -1841,7 +1897,7 @@
             if (state.apiKeys.length === 0) {
                 state.accountChart.data.labels = ['--'];
                 state.accountChart.data.datasets[0].data = [0];
-                state.accountChart.data.datasets[0].backgroundColor = ['rgba(148,163,184,0.45)'];
+                state.accountChart.data.datasets[0].backgroundColor = ['rgba(176,174,165,0.45)'];
                 state.accountChart.update();
                 hint.textContent = '暂无账户数据。';
                 return;
@@ -1855,9 +1911,9 @@
             state.accountChart.data.labels = labels;
             state.accountChart.data.datasets[0].data = values;
             state.accountChart.data.datasets[0].backgroundColor = labels.map((_, index) => {
-                if (index === state.currentKeyIndex) return 'rgba(37, 99, 235, 0.9)';
-                if (index === maxIndex && maxValue > 0) return 'rgba(16, 185, 129, 0.82)';
-                return 'rgba(148, 163, 184, 0.46)';
+                if (index === state.currentKeyIndex) return 'rgba(212, 162, 76, 0.95)';
+                if (index === maxIndex && maxValue > 0) return 'rgba(120, 140, 93, 0.86)';
+                return 'rgba(176, 174, 165, 0.46)';
             });
             state.accountChart.update();
 
