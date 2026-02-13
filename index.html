@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
         :root {
             --bg-primary: #f8fafc;
             --bg-secondary: #ffffff;
@@ -19,6 +21,8 @@
             --success-color: #22c55e;
             --warning-color: #f59e0b;
             --danger-color: #ef4444;
+            --glow-primary: rgba(59, 130, 246, 0.16);
+            --glow-secondary: rgba(16, 185, 129, 0.14);
         }
 
         [data-theme="dark"] {
@@ -33,9 +37,41 @@
         }
 
         body {
+            font-family: 'Outfit', 'PingFang SC', 'Microsoft YaHei', sans-serif;
             background-color: var(--bg-primary);
             color: var(--text-primary);
+            background-image:
+                radial-gradient(circle at 15% 10%, var(--glow-primary) 0%, transparent 38%),
+                radial-gradient(circle at 85% 20%, var(--glow-secondary) 0%, transparent 32%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 35%);
             transition: all 0.3s ease;
+        }
+
+        [data-theme="dark"] body {
+            background-image:
+                radial-gradient(circle at 15% 10%, rgba(96, 165, 250, 0.15) 0%, transparent 42%),
+                radial-gradient(circle at 85% 20%, rgba(20, 184, 166, 0.12) 0%, transparent 38%),
+                linear-gradient(180deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0) 35%);
+        }
+
+        .dashboard-shell {
+            position: relative;
+        }
+
+        .dashboard-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                -24deg,
+                rgba(148, 163, 184, 0.06) 0,
+                rgba(148, 163, 184, 0.06) 1px,
+                transparent 1px,
+                transparent 14px
+            );
+            mix-blend-mode: multiply;
+            opacity: 0.35;
         }
 
         .card {
@@ -182,10 +218,68 @@
         .status-success { background-color: var(--success-color); }
         .status-warning { background-color: var(--warning-color); }
         .status-danger { background-color: var(--danger-color); }
+
+        .chart-wrap {
+            position: relative;
+            min-height: 220px;
+        }
+
+        .chart-wrap-sm {
+            position: relative;
+            min-height: 180px;
+        }
+
+        .viz-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.3rem 0.65rem;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-tertiary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 0.5rem;
+        }
+
+        .heat-cell {
+            aspect-ratio: 1 / 1;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            transition: transform 0.15s ease, box-shadow 0.2s ease;
+        }
+
+        .heat-cell:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+        }
+
+        .heat-legend {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 0.65rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .heat-bar {
+            flex: 1;
+            height: 8px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(59,130,246,0.1), rgba(59,130,246,0.88));
+        }
     </style>
 </head>
 <body class="min-h-screen">
-    <div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="max-w-7xl mx-auto px-4 py-8 dashboard-shell">
         <!-- Header -->
         <header class="flex justify-between items-center mb-8">
             <div>
@@ -372,6 +466,9 @@
                         <div class="text-xs" style="color: var(--text-secondary)">
                             24h Token 用量: <span id="accountBalance" class="font-medium">--</span>
                         </div>
+                        <div class="text-xs" style="color: var(--text-secondary)">
+                            24h 调用次数: <span id="accountCalls" class="font-medium">--</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -410,6 +507,53 @@
                 </div>
             </div>
 
+            <!-- Visual Analytics -->
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+                <div class="card fade-in">
+                    <h3 class="text-lg font-semibold mb-3">额度结构</h3>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span id="quotaCycleChip" class="viz-chip">Cycle --%</span>
+                        <span id="quotaWeeklyChip" class="viz-chip">Week --%</span>
+                    </div>
+                    <div class="chart-wrap-sm">
+                        <canvas id="quotaRingChart"></canvas>
+                    </div>
+                </div>
+                <div class="card fade-in">
+                    <h3 class="text-lg font-semibold mb-3">MCP 工具分布</h3>
+                    <div class="chart-wrap-sm">
+                        <canvas id="mcpBarChart"></canvas>
+                    </div>
+                </div>
+                <div class="card fade-in">
+                    <h3 class="text-lg font-semibold mb-2">24h 热力矩阵</h3>
+                    <div class="text-xs mb-2" style="color: var(--text-secondary)">
+                        每格代表一小时 Token 活跃强度
+                    </div>
+                    <div id="hourlyHeatmap" class="heatmap-grid"></div>
+                    <div class="heat-legend">
+                        <span>低</span>
+                        <div class="heat-bar"></div>
+                        <span>高</span>
+                    </div>
+                    <div class="mt-2 text-xs" style="color: var(--text-secondary)">
+                        峰值: <span id="heatmapPeak" class="font-semibold">--</span> ·
+                        均值: <span id="heatmapAvg" class="font-semibold">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account Delta Compare -->
+            <div class="card fade-in mb-6">
+                <h3 class="text-lg font-semibold mb-2">多账户增量对比（本地追踪）</h3>
+                <div class="chart-wrap-sm">
+                    <canvas id="accountCompareChart"></canvas>
+                </div>
+                <div id="accountCompareHint" class="text-xs mt-2" style="color: var(--text-secondary)">
+                    切换账户并刷新后，将自动更新对比图。
+                </div>
+            </div>
+
             <!-- Usage Trend Chart -->
             <div class="card fade-in mb-6">
                 <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -418,7 +562,7 @@
                     </svg>
                     用量趋势（最近 24 小时）
                 </h3>
-                <div class="relative h-64">
+                <div class="chart-wrap">
                     <canvas id="trendChart"></canvas>
                 </div>
             </div>
@@ -515,6 +659,9 @@
             keyTracking: {},
             refreshTimer: null,
             chart: null,
+            quotaChart: null,
+            mcpChart: null,
+            accountChart: null,
             requestId: 0
         };
 
@@ -522,6 +669,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
             initChart();
+            initVisualCharts();
             initTheme();
             updateRefreshInterval(false);
             loadApiKeys();
@@ -1081,6 +1229,7 @@
 
             // Update chart
             updateChart(data);
+            updateVisualCharts(data);
         }
 
         function updateAccountSelector() {
@@ -1203,7 +1352,9 @@
             const statusDot = document.getElementById('statusDot');
             const statusText = document.getElementById('statusText');
             const balance = document.getElementById('accountBalance');
+            const calls = document.getElementById('accountCalls');
             balance.textContent = `${formatNumber(user.tokens24h || 0)} tokens`;
+            calls.textContent = `${formatNumber(user.calls24h || 0)}`;
 
             if ((user.cyclePercent || 0) >= 90) {
                 statusDot.className = 'status-dot status-danger';
@@ -1368,48 +1519,208 @@
         }
 
         // ==================== Chart ====================
+        function getChartTheme(themeName = document.documentElement.getAttribute('data-theme') || 'light') {
+            const dark = themeName === 'dark';
+            return {
+                textColor: dark ? '#94a3b8' : '#64748b',
+                gridColor: dark ? 'rgba(71, 85, 105, 0.45)' : 'rgba(148, 163, 184, 0.32)',
+                tokenColor: dark ? '#60a5fa' : '#2563eb',
+                callColor: dark ? '#34d399' : '#059669',
+                muted: dark ? 'rgba(148, 163, 184, 0.22)' : 'rgba(148, 163, 184, 0.2)'
+            };
+        }
+
+        function applyChartTheme(themeName) {
+            const colors = getChartTheme(themeName);
+            const chartsWithAxes = [state.chart, state.mcpChart, state.accountChart];
+
+            chartsWithAxes.forEach(chart => {
+                if (!chart?.options?.scales) return;
+                Object.values(chart.options.scales).forEach(scale => {
+                    if (!scale) return;
+                    if (scale.ticks) scale.ticks.color = colors.textColor;
+                    if (scale.grid) scale.grid.color = colors.gridColor;
+                });
+            });
+
+            if (state.quotaChart?.options?.plugins?.legend?.labels) {
+                state.quotaChart.options.plugins.legend.labels.color = colors.textColor;
+            }
+
+            [state.chart, state.quotaChart, state.mcpChart, state.accountChart].forEach(chart => {
+                if (chart) chart.update();
+            });
+        }
+
         function initChart() {
             const ctx = document.getElementById('trendChart').getContext('2d');
+            const colors = getChartTheme();
 
             state.chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: [],
-                    datasets: [{
-                        label: '每小时 Token 用量',
-                        data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
+                    datasets: [
+                        {
+                            label: '每小时 Token',
+                            data: [],
+                            borderColor: colors.tokenColor,
+                            backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                            fill: true,
+                            tension: 0.35,
+                            yAxisID: 'yTokens'
+                        },
+                        {
+                            label: '每小时调用',
+                            data: [],
+                            borderColor: colors.callColor,
+                            backgroundColor: 'rgba(5, 150, 105, 0.12)',
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: 'yCalls'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: colors.textColor
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: colors.gridColor
+                            },
+                            ticks: {
+                                color: colors.textColor
+                            }
+                        },
+                        yTokens: {
+                            beginAtZero: true,
+                            grid: {
+                                color: colors.gridColor
+                            },
+                            ticks: {
+                                color: colors.textColor
+                            },
+                            title: {
+                                display: true,
+                                text: 'Token',
+                                color: colors.textColor
+                            }
+                        },
+                        yCalls: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false,
+                                color: colors.gridColor
+                            },
+                            ticks: {
+                                color: colors.textColor
+                            },
+                            title: {
+                                display: true,
+                                text: 'Calls',
+                                color: colors.textColor
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function initVisualCharts() {
+            const colors = getChartTheme();
+
+            const quotaCtx = document.getElementById('quotaRingChart').getContext('2d');
+            state.quotaChart = new Chart(quotaCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['已使用', '剩余'],
+                    datasets: [
+                        {
+                            label: '5小时',
+                            data: [0, 100],
+                            backgroundColor: ['#10b981', colors.muted],
+                            borderWidth: 0,
+                            radius: '98%',
+                            cutout: '70%'
+                        },
+                        {
+                            label: '每周',
+                            data: [0, 100],
+                            backgroundColor: ['#f59e0b', colors.muted],
+                            borderWidth: 0,
+                            radius: '66%',
+                            cutout: '42%'
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: false
+                            position: 'bottom',
+                            labels: { color: colors.textColor }
                         }
-                    },
+                    }
+                }
+            });
+
+            const mcpCtx = document.getElementById('mcpBarChart').getContext('2d');
+            state.mcpChart = new Chart(mcpCtx, {
+                type: 'bar',
+                data: {
+                    labels: CONFIG.mcpTools.map(tool => tool.name),
+                    datasets: [{
+                        label: '调用次数',
+                        data: [0, 0, 0],
+                        borderRadius: 10,
+                        backgroundColor: ['#3b82f6', '#06b6d4', '#10b981']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            grid: {
-                                color: 'var(--border-color)'
-                            },
-                            ticks: {
-                                color: 'var(--text-secondary)'
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'var(--border-color)'
-                            },
-                            ticks: {
-                                color: 'var(--text-secondary)'
-                            }
-                        }
+                        x: { beginAtZero: true, ticks: { color: colors.textColor }, grid: { color: colors.gridColor } },
+                        y: { ticks: { color: colors.textColor }, grid: { color: colors.gridColor } }
+                    }
+                }
+            });
+
+            const accountCtx = document.getElementById('accountCompareChart').getContext('2d');
+            state.accountChart = new Chart(accountCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'ΔTokens',
+                        data: [],
+                        borderRadius: 10,
+                        backgroundColor: []
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: colors.textColor }, grid: { color: colors.gridColor } },
+                        y: { beginAtZero: true, ticks: { color: colors.textColor }, grid: { color: colors.gridColor } }
                     }
                 }
             });
@@ -1431,6 +1742,9 @@
                     return parts.length > 1 ? parts[1] : label;
                 });
                 state.chart.data.datasets[0].data = trend.tokens;
+                state.chart.data.datasets[1].data = Array.isArray(trend.calls)
+                    ? trend.calls.map(v => Number(v || 0))
+                    : trend.tokens.map(() => 0);
                 state.chart.update();
                 return;
             }
@@ -1448,6 +1762,7 @@
                         new Date(h.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
                     );
                     state.chart.data.datasets[0].data = recentHistory.map(h => h.cycleUsed || 0);
+                    state.chart.data.datasets[1].data = recentHistory.map(() => 0);
                     state.chart.update();
                     return;
                 }
@@ -1455,7 +1770,102 @@
 
             state.chart.data.labels = ['无数据'];
             state.chart.data.datasets[0].data = [0];
+            state.chart.data.datasets[1].data = [0];
             state.chart.update();
+        }
+
+        function updateVisualCharts(data) {
+            if (!data) return;
+
+            const cyclePercent = Number(data.plan?.cyclePercent || 0);
+            const weeklyPercent = Number(data.weekly?.percent || 0);
+
+            document.getElementById('quotaCycleChip').textContent = `Cycle ${cyclePercent}%`;
+            document.getElementById('quotaWeeklyChip').textContent = `Week ${weeklyPercent}%`;
+
+            if (state.quotaChart) {
+                state.quotaChart.data.datasets[0].data = [cyclePercent, Math.max(100 - cyclePercent, 0)];
+                state.quotaChart.data.datasets[1].data = [weeklyPercent, Math.max(100 - weeklyPercent, 0)];
+                state.quotaChart.update();
+            }
+
+            if (state.mcpChart) {
+                state.mcpChart.data.datasets[0].data = CONFIG.mcpTools.map(tool =>
+                    Number(data.mcpUsage?.[tool.id]?.used || 0)
+                );
+                state.mcpChart.update();
+            }
+
+            updateHeatmap(data.trend);
+            updateAccountCompareChart();
+        }
+
+        function updateHeatmap(trend) {
+            const container = document.getElementById('hourlyHeatmap');
+            const peakLabel = document.getElementById('heatmapPeak');
+            const avgLabel = document.getElementById('heatmapAvg');
+
+            if (!container) return;
+            const labels = Array.isArray(trend?.labels) ? trend.labels : [];
+            const tokens = Array.isArray(trend?.tokens) ? trend.tokens.map(v => Number(v || 0)) : [];
+            const calls = Array.isArray(trend?.calls) ? trend.calls.map(v => Number(v || 0)) : [];
+
+            if (labels.length === 0 || tokens.length === 0) {
+                container.innerHTML = '<div class="text-xs col-span-8" style="color: var(--text-secondary)">暂无趋势数据</div>';
+                peakLabel.textContent = '--';
+                avgLabel.textContent = '--';
+                return;
+            }
+
+            const maxToken = Math.max(...tokens, 1);
+            const avgToken = Math.round(tokens.reduce((sum, val) => sum + val, 0) / tokens.length);
+            const peakToken = Math.max(...tokens);
+
+            container.innerHTML = tokens.map((value, index) => {
+                const ratio = maxToken > 0 ? value / maxToken : 0;
+                const alpha = (0.12 + ratio * 0.84).toFixed(3);
+                const label = labels[index] || `slot-${index}`;
+                const call = Number(calls[index] || 0);
+                const title = `${label} | Tokens: ${formatNumber(value)} | Calls: ${formatNumber(call)}`;
+                return `<div class="heat-cell" style="background-color: rgba(37, 99, 235, ${alpha})" title="${title}"></div>`;
+            }).join('');
+
+            peakLabel.textContent = formatNumber(peakToken);
+            avgLabel.textContent = formatNumber(avgToken);
+        }
+
+        function updateAccountCompareChart() {
+            const hint = document.getElementById('accountCompareHint');
+            if (!state.accountChart || !hint) return;
+
+            if (state.apiKeys.length === 0) {
+                state.accountChart.data.labels = ['--'];
+                state.accountChart.data.datasets[0].data = [0];
+                state.accountChart.data.datasets[0].backgroundColor = ['rgba(148,163,184,0.45)'];
+                state.accountChart.update();
+                hint.textContent = '暂无账户数据。';
+                return;
+            }
+
+            const labels = state.apiKeys.map((_, index) => `账户 ${index + 1}`);
+            const values = state.apiKeys.map(key => Number(state.keyTracking[key]?.delta?.tokens || 0));
+            const maxValue = values.length ? Math.max(...values) : 0;
+            const maxIndex = values.indexOf(maxValue);
+
+            state.accountChart.data.labels = labels;
+            state.accountChart.data.datasets[0].data = values;
+            state.accountChart.data.datasets[0].backgroundColor = labels.map((_, index) => {
+                if (index === state.currentKeyIndex) return 'rgba(37, 99, 235, 0.9)';
+                if (index === maxIndex && maxValue > 0) return 'rgba(16, 185, 129, 0.82)';
+                return 'rgba(148, 163, 184, 0.46)';
+            });
+            state.accountChart.update();
+
+            if (maxValue > 0) {
+                hint.textContent = `当前最大增量: 账户 ${maxIndex + 1} · ΔTokens ${formatNumber(maxValue)}`;
+            } else {
+                hint.textContent = '当前所有账户 ΔTokens 为 0，先使用一段时间再看差异。';
+            }
         }
 
         function saveHistoryData(data) {
@@ -1477,6 +1887,7 @@
             const savedTheme = localStorage.getItem('glm_theme') || 'light';
             document.documentElement.setAttribute('data-theme', savedTheme);
             updateThemeIcon(savedTheme);
+            applyChartTheme(savedTheme);
         }
 
         function toggleTheme() {
@@ -1486,18 +1897,7 @@
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('glm_theme', newTheme);
             updateThemeIcon(newTheme);
-
-            // Update chart colors
-            if (state.chart) {
-                const textColor = newTheme === 'dark' ? '#94a3b8' : '#64748b';
-                const gridColor = newTheme === 'dark' ? '#475569' : '#e2e8f0';
-
-                state.chart.options.scales.x.ticks.color = textColor;
-                state.chart.options.scales.y.ticks.color = textColor;
-                state.chart.options.scales.x.grid.color = gridColor;
-                state.chart.options.scales.y.grid.color = gridColor;
-                state.chart.update();
-            }
+            applyChartTheme(newTheme);
         }
 
         function updateThemeIcon(theme) {
